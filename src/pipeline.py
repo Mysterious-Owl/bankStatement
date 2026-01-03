@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import hashlib
-from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows
+from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows, remove_leading_empty_columns, remove_empty_junk_columns
 from lib.enricher import enricher
 import config
 
@@ -32,7 +32,7 @@ def main():
     files = glob.glob(os.path.join(config.RAW_DIR, "*"))
     
     for f in files:
-        if not (f.endswith('.xls') or f.endswith('.xlsx')):
+        if not (f.endswith('.xls') or f.endswith('.xlsx') or f.endswith('.csv')):
             continue
             
         basename = os.path.basename(f)
@@ -47,9 +47,20 @@ def main():
             print(f"Failed to open {basename}")
             continue
             
+        # 1. Remove Leading Empty Columns (Indentation)
+        df = remove_leading_empty_columns(df)
+        
+        # 2. Find Table Header/Start
         cleaned_df, _ = find_table_start(df)
+        
+        # 3. Find Table End/Footer
         cleaned_df = find_table_end(cleaned_df)
+        
+        # 4. Remove Junk Rows (Separators)
         cleaned_df = remove_junk_rows(cleaned_df)
+        
+        # 5. Remove Empty Junk Columns (post-cleanup)
+        cleaned_df = remove_empty_junk_columns(cleaned_df)
         
         # Save raw extracted table
         if not os.path.exists(os.path.join(config.BASE_DIR, "raw_extracted_tables")):
@@ -117,17 +128,50 @@ def main():
         # Let's take first for now as per "Merge descriptions" instruction implies logic mainly for desc. 
         # But for numeric, usually it's one column.
         
+        # New: Handle "Amount" + "Type" schema
+        amt_cols = std_to_raw.get('Amount', [])
+        type_cols = std_to_raw.get('TxnType', [])
+        
+        has_split_amt = bool(amt_cols and type_cols)
+        
         for col in ["Debit", "Credit", "Balance", "RefNumber"]:
             raw_cols = std_to_raw.get(col, [])
             if raw_cols:
-                # Take the first one
-                # TODO: If multiple columns, maybe sum them? (e.g. distinct specific user fees and taxes both mapped to Debit)
-                # For safety, let's take the first one. 
                 final_df[col] = cleaned_df[raw_cols[0]]
-                if len(raw_cols) > 1:
-                     print(f"Warning: Multiple columns mapped to {col} in {basename}: {raw_cols}. Using {raw_cols[0]}.")
             else:
                 final_df[col] = 0 if col in ["Debit", "Credit", "Balance"] else ""
+
+        # If we have Amount + Type, populate Debit/Credit from it overrides
+        if has_split_amt:
+             raw_amt = cleaned_df[amt_cols[0]]
+             raw_type = cleaned_df[type_cols[0]].astype(str).str.lower()
+             
+             # Initialize if not present
+             if 'Debit' not in final_df.columns: final_df['Debit'] = 0
+             if 'Credit' not in final_df.columns: final_df['Credit'] = 0
+             
+             # Convert amount to float first
+             # We reuse clean_currency logic later but need basic float here
+             # Let's defer strict cleaning, just ensure we can parse
+             # Helper to parse amount loosely
+             def parse_float(x):
+                 import re
+                 try:
+                     return float(re.search(r'\d+\.?\d*', str(x).replace(',','')).group(0))
+                 except: return 0.0
+             
+             floats = raw_amt.apply(parse_float)
+             
+             # Check for 'debit' or 'dr' in type
+             is_debit = raw_type.str.contains('debit') | raw_type.str.contains('dr')
+             is_credit = raw_type.str.contains('credit') | raw_type.str.contains('cr')
+             
+             # If mapping exists, overwrite
+             # Note: This overwrites any "Debit" / "Credit" distinct columns if they existed via other mapping.
+             # We assume if user mapped Amount/Type, they want this.
+             
+             final_df.loc[is_debit, 'Debit'] = floats[is_debit]
+             final_df.loc[is_credit, 'Credit'] = floats[is_credit]
 
         # Clean Data (Handle commas, Cr/Dr suffixes)
         def clean_currency(val, is_balance=False):
@@ -158,6 +202,29 @@ def main():
             
         final_df = final_df[~((final_df['Debit'] == 0) & (final_df['Credit'] == 0) & (final_df['Balance'] == 0))]
         
+        # --- Handle Intra-Day Sorting (Index Normalization) ---
+        # Bank statements can be Ascending (Oldest Top) or Descending (Newest Top).
+        # We want SortIndex to always represent time order (Low = Early, High = Late).
+        
+        valid_dates = final_df['Date'].dropna()
+        is_descending = False
+        
+        if len(valid_dates) > 1:
+            first_date = valid_dates.iloc[0]
+            last_date = valid_dates.iloc[-1]
+            if first_date > last_date:
+                is_descending = True
+        
+        if is_descending:
+            # If Newest Top (Row 0 is late), we want SortIndex to be High for Row 0.
+            # So we invert the index: 0 -> N, 1 -> N-1 ...
+            final_df['SortIndex'] = range(len(final_df)-1, -1, -1)
+        else:
+            # If Oldest Top (Row 0 is early), SortIndex = 0, 1...
+            final_df['SortIndex'] = range(len(final_df))
+            
+        final_df['OriginalIndex'] = final_df.index # Keep for reference
+        
         # Bank Name
         if "HDFC" in basename.upper(): final_df['Bank'] = "HDFC"
         elif "SBI" in basename.upper(): final_df['Bank'] = "SBI"
@@ -174,6 +241,10 @@ def main():
         
     if all_txns:
         mega_df = pd.concat(all_txns, ignore_index=True)
+        
+        # Sort by Date, then Normalized SortIndex (Time Order), then Bank
+        mega_df.sort_values(by=['Date', 'SortIndex', 'Bank'], inplace=True)
+        
         mega_df['TxnID'] = mega_df.apply(generate_txn_id, axis=1)
         
         # --- Duplicate Reporting Logic ---

@@ -14,12 +14,23 @@ def generate_column_mapping(raw_headers, output_csv):
             # Heuristics
             if "date" in col_str: best_match = "Date"
             elif any(x in col_str for x in ["value dt"]): best_match = "Date"
-            elif any(x in col_str for x in ["desc", "particular", "narration", "details"]): best_match = "Description"
-            elif any(x in col_str for x in ["debit", "dr", "withdrawal"]): best_match = "Debit"
-            elif any(x in col_str for x in ["credit", "cr", "deposit"]): best_match = "Credit"
+            elif any(x in col_str for x in ["description"]): best_match = "Description"
+            elif any(x in col_str for x in ["debit", "dr", "withdrawal"]) and not any(x in col_str for x in ["dr / cr"]) : best_match = "Debit"
+            elif any(x in col_str for x in ["credit", "cr", "deposit"]) and not any(x in col_str for x in ["dr / cr"]) : best_match = "Credit"
             elif "bal" in col_str: best_match = "Balance"
-            elif any(x in col_str for x in ["ref", "chq", "txn", "cheque"]): best_match = "RefNumber"
+            elif any(x in col_str for x in ["ref", "chq", "txn", "cheque", "reference"]): best_match = "RefNumber"
+            elif "type" in col_str: best_match = "TxnType"
+            elif "amount" in col_str: best_match = "Amount"
             
+            # Catch-all: If explicitly looks like description OR hasn't been matched yet
+            if best_match == "" and not any(x in col_str for x in ["dr / cr"]):
+                 if any(x in col_str for x in ["desc", "particular", "narration", "details", "remarks", "beneficiary", "remitter"]): 
+                     best_match = "Description"
+                 else:
+                     # "Columns other than amount and date" for Description
+                     # If it's not any of the above strict types, user asked to map it to Description
+                     best_match = "Description"
+
             mapping_data.append({
                 "FileName": file_name,
                 "RawColumn": col,
@@ -41,7 +52,7 @@ def main():
     all_headers = {}
     
     for f in files:
-        if not (f.endswith('.xls') or f.endswith('.xlsx')):
+        if not (f.endswith('.xls') or f.endswith('.xlsx') or f.endswith('.csv')):
             continue
             
         print(f"Scanning {os.path.basename(f)}...")

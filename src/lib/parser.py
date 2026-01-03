@@ -20,8 +20,21 @@ def try_open_workbook(file_path, passwords):
     """
     # 1. Try without password
     try:
+        if file_path.endswith('.csv'):
+            # Handle jagged CSVs (metadata rows having fewer cols than data)
+            import csv
+            max_cols = 0
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) > max_cols:
+                        max_cols = len(row)
+                        
+            # Read with generic names to prevent "Expected X fields saw Y"
+            return pd.read_csv(file_path, header=None, names=range(max_cols), engine='python')
         return pd.read_excel(file_path)
-    except:
+    except Exception as e:
+        print(f"Failed to read {file_path}: {e}")
         pass
 
     # 2. Try with passwords
@@ -42,6 +55,34 @@ def try_open_workbook(file_path, passwords):
             
     return None
 
+def remove_leading_empty_columns(df):
+    """
+    Removes columns from the left if they are purely empty (NaN or empty strings).
+    Stops at the first column that has data.
+    """
+    if df is None or df.empty:
+        return df
+
+    cols_to_drop = []
+    for col in df.columns:
+        # Check if column has any non-null, non-empty value
+        if df[col].count() == 0:
+            cols_to_drop.append(col)
+            continue
+            
+        # Check if non-NA values are empty strings
+        non_nans = df[col].dropna().astype(str).str.strip()
+        if non_nans.eq('').all():
+             cols_to_drop.append(col)
+        else:
+             # Found data column
+             break
+             
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+        
+    return df
+
 def find_table_start(df):
     """
     Identifies the header row based on column fill density.
@@ -49,6 +90,9 @@ def find_table_start(df):
     """
     if df is None or df.empty:
         return None, 0
+        
+    # NOTE: Leading empty columns now handled by pipeline before calling this
+    # df = remove_leading_empty_columns(df)
 
     max_density = 0
     header_idx = 0
@@ -140,3 +184,22 @@ def remove_junk_rows(df):
         return val.strip().replace('*', '').replace('-', '') == ''
         
     return df[~df.apply(is_junk, axis=1)]
+
+def remove_empty_junk_columns(df):
+    """
+    Removes columns that are effectively empty (all NaN or empty strings).
+    """
+    if df is None or df.empty:
+        return df
+        
+    cols_to_drop = []
+    for col in df.columns:
+        if df[col].count() == 0:
+            cols_to_drop.append(col)
+        elif df[col].dropna().astype(str).str.strip().eq('').all():
+            cols_to_drop.append(col)
+            
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+        
+    return df

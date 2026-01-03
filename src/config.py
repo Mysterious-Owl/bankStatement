@@ -12,13 +12,13 @@ SRC_DIR = os.path.join(BASE_DIR, "src")
 
 # Files
 PASS_FILE = os.path.join(SRC_DIR, "passwords.txt")
-MAPPING_FILE = os.path.join(RAW_DIR, "column_mapping.csv")
+MAPPING_FILE = os.path.join(SRC_DIR, "column_mapping.csv")
 MEGA_STATEMENT_PARQUET = os.path.join(ENRICHED_DIR, "mega_statement.parquet")
 MEGA_STATEMENT_CSV = os.path.join(ENRICHED_DIR, "mega_statement.csv")
 DUPLICATES_REPORT_CSV = os.path.join(ENRICHED_DIR, "duplicates_report.csv")
 
 # Data Standard
-STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber"]
+STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber", "Amount", "TxnType"]
 
 # Categorization
 CATEGORIES = {
