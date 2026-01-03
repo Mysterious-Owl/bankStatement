@@ -129,9 +129,32 @@ def main():
             else:
                 final_df[col] = 0 if col in ["Debit", "Credit", "Balance"] else ""
 
-        # Clean Data
+        # Clean Data (Handle commas, Cr/Dr suffixes)
+        def clean_currency(val, is_balance=False):
+            if pd.isna(val): return 0.0
+            s = str(val).strip().lower()
+            if not s: return 0.0
+            
+            # Determine sign magnitude
+            sign = 1.0
+            if 'dr' in s:
+                if is_balance: sign = -1.0
+            
+            # Remove alphabets and commas
+            clean_s = s.replace(',', '').replace('cr', '').replace('dr', '').replace(' ', '')
+            
+            import re
+            match = re.search(r'-?\d+\.?\d*', clean_s)
+            if match:
+                try:
+                    return float(match.group(0)) * sign
+                except:
+                    return 0.0
+            return 0.0
+
         for col in ["Debit", "Credit", "Balance"]:
-            final_df[col] = pd.to_numeric(final_df[col], errors='coerce').fillna(0)
+            is_bal = (col == "Balance")
+            final_df[col] = final_df[col].apply(lambda x: clean_currency(x, is_balance=is_bal))
             
         final_df = final_df[~((final_df['Debit'] == 0) & (final_df['Credit'] == 0) & (final_df['Balance'] == 0))]
         
