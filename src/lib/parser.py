@@ -63,23 +63,31 @@ def remove_leading_empty_columns(df):
     if df is None or df.empty:
         return df
 
-    cols_to_drop = []
-    for col in df.columns:
-        # Check if column has any non-null, non-empty value
-        if df[col].count() == 0:
-            cols_to_drop.append(col)
+    drop_indices = []
+    num_cols = len(df.columns)
+    
+    for i in range(num_cols):
+        col_data = df.iloc[:, i]
+        
+        # Check count of non-null
+        if col_data.count() == 0:
+            drop_indices.append(i)
             continue
             
         # Check if non-NA values are empty strings
-        non_nans = df[col].dropna().astype(str).str.strip()
+        non_nans = col_data.dropna().astype(str).str.strip()
         if non_nans.eq('').all():
-             cols_to_drop.append(col)
+             drop_indices.append(i)
         else:
              # Found data column
              break
              
-    if cols_to_drop:
-        df = df.drop(columns=cols_to_drop)
+    if drop_indices:
+        # Drop by index
+        # We need to drop these column indices. 
+        # Easier to keep the slice from first non-dropped index
+        start_idx = len(drop_indices)
+        df = df.iloc[:, start_idx:]
         
     return df
 
@@ -192,14 +200,22 @@ def remove_empty_junk_columns(df):
     if df is None or df.empty:
         return df
         
-    cols_to_drop = []
-    for col in df.columns:
-        if df[col].count() == 0:
-            cols_to_drop.append(col)
-        elif df[col].dropna().astype(str).str.strip().eq('').all():
-            cols_to_drop.append(col)
+    keep_indices = []
+    num_cols = len(df.columns)
+    
+    for i in range(num_cols):
+        col_data = df.iloc[:, i]
+        
+        if col_data.count() == 0:
+            continue
             
-    if cols_to_drop:
-        df = df.drop(columns=cols_to_drop)
+        non_nans = col_data.dropna().astype(str).str.strip()
+        if non_nans.eq('').all():
+            continue
+            
+        keep_indices.append(i)
+            
+    if len(keep_indices) != num_cols:
+        df = df.iloc[:, keep_indices]
         
     return df

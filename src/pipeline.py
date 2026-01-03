@@ -128,6 +128,9 @@ def main():
         # Let's take first for now as per "Merge descriptions" instruction implies logic mainly for desc. 
         # But for numeric, usually it's one column.
         
+        if "PPBL" in basename.upper(): 
+            print('PPBL')
+
         # New: Handle "Amount" + "Type" schema
         amt_cols = std_to_raw.get('Amount', [])
         type_cols = std_to_raw.get('TxnType', [])
@@ -163,8 +166,8 @@ def main():
              floats = raw_amt.apply(parse_float)
              
              # Check for 'debit' or 'dr' in type
-             is_debit = raw_type.str.contains('debit') | raw_type.str.contains('dr')
-             is_credit = raw_type.str.contains('credit') | raw_type.str.contains('cr')
+             is_credit = raw_type.str.contains('credit') | raw_type.str.contains('cr') | raw_type.str.contains('c')
+             is_debit = raw_type.str.contains('debit') | raw_type.str.contains('dr') | raw_type.str.contains('d')
              
              # If mapping exists, overwrite
              # Note: This overwrites any "Debit" / "Credit" distinct columns if they existed via other mapping.
@@ -230,6 +233,10 @@ def main():
         elif "SBI" in basename.upper(): final_df['Bank'] = "SBI"
         elif "IDFC" in basename.upper(): final_df['Bank'] = "IDFC"
         elif "PNB" in basename.upper(): final_df['Bank'] = "PNB"
+        elif "KOTAK" in basename.upper(): final_df['Bank'] = "KOTAK"
+        elif "PPBL" in basename.upper(): final_df['Bank'] = "PPBL"
+        elif "UNITYMOM" in basename.upper(): final_df['Bank'] = "UNITYMOM"
+        elif "UNITYTAN" in basename.upper(): final_df['Bank'] = "UNITYTAN"
         else: final_df['Bank'] = "Unknown"
         
         # Enrich
