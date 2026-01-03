@@ -5,4 +5,4 @@ fastapi
 uvicorn
 python-multipart
 xlsxwriter
-msoffice_crypt
+msoffcrypto-tool

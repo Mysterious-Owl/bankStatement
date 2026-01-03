@@ -15,7 +15,7 @@ def get_file_mapping(mapping_df, filename):
     return dict(zip(valid_map['RawColumn'], valid_map['MappedTo']))
 
 def generate_txn_id(row):
-    s = f"{row.get('Date')}{row.get('Description')}{row.get('Debit')}{row.get('Credit')}{row.get('Balance')}"
+    s = f"{row.get('Date')}{row.get('Description')}{row.get('Debit')}{row.get('Credit')}{row.get('Balance')}{row.get('RefNumber')}"
     return hashlib.md5(s.encode('utf-8')).hexdigest()
 
 def main():
@@ -153,6 +153,52 @@ def main():
         mega_df = pd.concat(all_txns, ignore_index=True)
         mega_df['TxnID'] = mega_df.apply(generate_txn_id, axis=1)
         
+        # --- Duplicate Reporting Logic ---
+        # Find all duplicates (keep=False marks all duplicates as True)
+        dupes_mask = mega_df.duplicated(subset=['TxnID'], keep=False)
+        
+        if dupes_mask.any():
+            dupes_df = mega_df[dupes_mask].copy()
+            # We want to group by TxnID to keep pairs together
+            # We also want to determine which one WOULD be kept (keep='first')
+            
+            report_rows = []
+            # Group by TxnID
+            grouped = dupes_df.groupby('TxnID')
+            
+            for txn_id, group in grouped:
+                # The pipeline uses drop_duplicates(keep='first') by default later
+                # So the first row in the group (as per original order) is 'Kept', others 'Deleted'
+                # Note: group preserves original index/order if not sorted, but groupby might not.
+                # Let's ensure we respect the original appearance order.
+                # However, groupby preserves order within groups usually?
+                # Let's safely sort by index if needed, or rely on iteration order.
+                
+                # To be sure of 'keep=first' behavior matching, we should look at original indices.
+                # But here we just want to flag them.
+                
+                # Let's create a local copy to modify
+                g = group.copy()
+                g['DuplicateStatus'] = 'Deleted'
+                g.iloc[0, g.columns.get_loc('DuplicateStatus')] = 'Kept' # Mark first as kept
+                
+                # Reorder columns to put Status first
+                cols = ['DuplicateStatus'] + [c for c in g.columns if c != 'DuplicateStatus']
+                g = g[cols]
+                
+                report_rows.append(g)
+                # Add empty row for separation
+                empty_row = pd.DataFrame([[''] * len(cols)], columns=cols)
+                report_rows.append(empty_row)
+            
+            if report_rows:
+                full_report = pd.concat(report_rows, ignore_index=True)
+                full_report.to_csv(config.DUPLICATES_REPORT_CSV, index=False)
+                print(f"Duplicates report saved to {config.DUPLICATES_REPORT_CSV}")
+        else:
+            print("No duplicates found.")
+
+        # Dedup (Maintain original behavior)
         before_count = len(mega_df)
         mega_df.drop_duplicates(subset=['TxnID'], inplace=True)
         print(f"Merged {len(all_txns)} files. Rows: {before_count} -> {len(mega_df)} (after dedup)")

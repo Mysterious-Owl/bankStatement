@@ -15,6 +15,7 @@ PASS_FILE = os.path.join(SRC_DIR, "passwords.txt")
 MAPPING_FILE = os.path.join(RAW_DIR, "column_mapping.csv")
 MEGA_STATEMENT_PARQUET = os.path.join(ENRICHED_DIR, "mega_statement.parquet")
 MEGA_STATEMENT_CSV = os.path.join(ENRICHED_DIR, "mega_statement.csv")
+DUPLICATES_REPORT_CSV = os.path.join(ENRICHED_DIR, "duplicates_report.csv")
 
 # Data Standard
 STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber"]
