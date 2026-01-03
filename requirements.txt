@@ -1,0 +1,8 @@
+pandas
+openpyxl
+xlrd
+fastapi
+uvicorn
+python-multipart
+xlsxwriter
+msoffice_crypt

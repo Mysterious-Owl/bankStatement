@@ -1,0 +1,7 @@
+raw_statements
+enriched_statements
+final_statements
+.agent
+*__pycache__*
+passwords.txt
+raw_extracted_tables
