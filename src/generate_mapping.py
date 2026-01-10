@@ -23,7 +23,7 @@ def generate_column_mapping(raw_headers, output_csv):
             elif "amount" in col_str: best_match = "Amount"
             
             # Catch-all: If explicitly looks like description OR hasn't been matched yet
-            if best_match == "" and not any(x in col_str for x in ["dr / cr"]):
+            if best_match == "" and not any(x in col_str for x in ["dr / cr", "sl. no."]):
                  if any(x in col_str for x in ["desc", "particular", "narration", "details", "remarks", "beneficiary", "remitter"]): 
                      best_match = "Description"
                  else:

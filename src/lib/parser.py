@@ -5,6 +5,8 @@ import msoffcrypto
 from openpyxl import load_workbook
 import xlrd
 from config import PASS_FILE
+import warnings
+warnings.filterwarnings("ignore")
 
 def get_passwords(pw_file):
     if not os.path.exists(pw_file):
@@ -34,8 +36,8 @@ def try_open_workbook(file_path, passwords):
             return pd.read_csv(file_path, header=None, names=range(max_cols), engine='python')
         return pd.read_excel(file_path)
     except Exception as e:
-        print(f"Failed to read {file_path}: {e}")
-        pass
+        if str(e) != "Can't find workbook in OLE2 compound document":
+            print(f"Failed to read {file_path}: {e}")
 
     # 2. Try with passwords
     for pw in passwords:
