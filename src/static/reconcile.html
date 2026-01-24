@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Reconciliation Summary</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #f3f4f6;
+        }
+
+        /* Dark Mode */
+        .card {
+            background: #1f2937;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+            border: 1px solid #374151;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+
+        thead {
+            background-color: #374151;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #374151;
+        }
+
+        tbody tr:hover {
+            background-color: #2d3748;
+        }
+    </style>
+</head>
+
+<body class="p-8">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Reconciliation Summary</h1>
+            <div class="flex gap-3">
+                <a href="/" class="text-blue-400 hover:text-blue-300 underline">Dashboard</a>
+                <a href="/data" class="text-blue-400 hover:text-blue-300 underline">Data Grid</a>
+                <a href="/rules" class="text-blue-400 hover:text-blue-300 underline">Rules</a>
+            </div>
+        </div>
+
+        <div class="card overflow-hidden">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr>
+                        <th class="font-semibold text-gray-300">Bank</th>
+                        <th class="font-semibold text-gray-300 text-right">Statements</th>
+                        <th class="font-semibold text-gray-300 text-right">Transactions</th>
+                        <th class="font-semibold text-gray-300">Date Range</th>
+                        <th class="font-semibold text-gray-300 text-right">Days Since Update</th>
+                        <th class="font-semibold text-gray-300 text-right">Total Credit</th>
+                        <th class="font-semibold text-gray-300 text-right">Total Debit</th>
+                    </tr>
+                </thead>
+                <tbody id="reconBody">
+                    <!-- Rows populated here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const currencyFormatter = new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            maximumFractionDigits: 0
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('/data.csv')
+                .then(r => r.text())
+                .then(csvText => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        dynamicTyping: true,
+                        skipEmptyLines: true,
+                        complete: function (results) {
+                            processRecon(results.data);
+                        }
+                    });
+                });
+        });
+
+        function processRecon(data) {
+            const banks = {};
+            const now = new Date();
+
+            data.forEach(row => {
+                const bank = row.Bank || 'Unknown';
+                if (!banks[bank]) {
+                    banks[bank] = {
+                        count: 0,
+                        files: new Set(),
+                        dates: [],
+                        credit: 0,
+                        debit: 0
+                    };
+                }
+
+                banks[bank].count++;
+                if (row.SourceFile) banks[bank].files.add(row.SourceFile);
+                if (row.Date) banks[bank].dates.push(row.Date);
+
+                banks[bank].credit += parseFloat(String(row.Credit || 0).replace(/,/g, ''));
+                banks[bank].debit += parseFloat(String(row.Debit || 0).replace(/,/g, ''));
+            });
+
+            const tbody = document.getElementById('reconBody');
+
+            // Convert to array for sorting
+            const bankStats = Object.keys(banks).map(bankName => {
+                const info = banks[bankName];
+                info.dates.sort();
+                const minDate = info.dates.length ? info.dates[0] : '-';
+                const maxDate = info.dates.length ? info.dates[info.dates.length - 1] : '-';
+
+                let daysAgo = -1;
+                if (maxDate !== '-') {
+                    const lastDate = new Date(maxDate);
+                    const diffTime = Math.abs(now - lastDate);
+                    daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                }
+
+                return {
+                    name: bankName,
+                    ...info,
+                    minDate,
+                    maxDate,
+                    daysAgo
+                };
+            });
+
+            // Sort: most old (largest daysAgo) to most recent
+            bankStats.sort((a, b) => b.daysAgo - a.daysAgo);
+
+            bankStats.forEach(info => {
+                const tr = document.createElement('tr');
+                const daysStr = info.daysAgo === -1 ? '-' : `${info.daysAgo} days ago`;
+                const daysColor = info.daysAgo > 30 ? 'text-red-400' : (info.daysAgo > 7 ? 'text-yellow-400' : 'text-gray-300');
+
+                tr.innerHTML = `
+                    <td class="font-medium text-white">${info.name}</td>
+                    <td class="text-right text-gray-300">${info.files.size}</td>
+                    <td class="text-right text-gray-300">${info.count.toLocaleString()}</td>
+                    <td class="text-gray-400 font-mono text-xs">${info.minDate} to ${info.maxDate}</td>
+                    <td class="text-right ${daysColor}">${daysStr}</td>
+                    <td class="text-right text-green-400">${currencyFormatter.format(info.credit)}</td>
+                    <td class="text-right text-red-400">${currencyFormatter.format(info.debit)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+
+</html>

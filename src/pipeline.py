@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import hashlib
 from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows, remove_leading_empty_columns, remove_empty_junk_columns
-from lib.enricher import enricher
 import config
 
 def get_file_mapping(mapping_df, filename):
@@ -115,9 +114,15 @@ def main():
         # Strategy: Concatenate all mapped description columns
         desc_cols = std_to_raw.get('Description', [])
         if desc_cols:
-            # We select all these Description columns. 
-            # fillna('') to avoid "nan" in string join
-            final_df['Description'] = cleaned_df[desc_cols].fillna('').astype(str).agg(' '.join, axis=1)
+            # Join all mapped columns with space, replace newlines/tabs with space, collapse multi-spaces, and strip
+            def clean_desc(row):
+                text = " ".join(row.fillna('').astype(str))
+                # Replace newlines and tabs with spaces
+                text = text.replace('\n', '').replace('\r', '').replace('\t', ' ')
+                # Collapse multiple spaces and strip
+                return " ".join(text.split()).strip()
+            
+            final_df['Description'] = cleaned_df[desc_cols].apply(clean_desc, axis=1)
         else:
             final_df['Description'] = ""
             
@@ -238,11 +243,6 @@ def main():
         elif "UNITYMOM" in basename.upper(): final_df['Bank'] = "UNITYMOM"
         elif "UNITYTAN" in basename.upper(): final_df['Bank'] = "UNITYTAN"
         else: final_df['Bank'] = "Unknown"
-        
-        # Enrich
-        final_df['Category'] = final_df['Description'].apply(enricher.categorize)
-        final_df['Entity'] = final_df['Description'].apply(enricher.extract_entity)
-        final_df['Tags'] = "" 
         
         all_txns.append(final_df)
         

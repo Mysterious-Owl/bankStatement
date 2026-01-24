@@ -21,13 +21,4 @@ DUPLICATES_REPORT_CSV = os.path.join(ENRICHED_DIR, "duplicates_report.csv")
 STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber", "Amount", "TxnType"]
 
 # Categorization
-CATEGORIES = {
-    "Food": ["swiggy", "zomato", "restaurant", "burger", "pizza", "coffee", "starbucks", "mcdonalds", "kfc", "dominos", "food"],
-    "Transport": ["uber", "ola", "metro", "fuel", "hpcl", "bpcl", "petrol", "parking", "fastag", "shell", "indian oil"],
-    "Shopping": ["amazon", "flipkart", "myntra", "zudio", "retail", "mart", "ikea", "decathlon", "ajio"],
-    "Utilities": ["bescom", "water", "gas", "bill", "recharge", "jio", "airtel", "vi", "bsnl", "electricity"],
-    "Finance": ["emi", "loan", "interest", "bank", "atm", "withdraw", "fund", "insurance", "premium"],
-    "Investment": ["zerodha", "groww", "kuvera", "ppf", "nps", "sip", "mutual fund", "stocks"],
-    "Health": ["pharmacy", "doctor", "hospital", "clinic", "medplus", "apollo", "1mg", "practo"],
-    "Entertainment": ["netflix", "spotify", "hotstar", "cinema", "bookmyshow", "pvr", "inox", "youtube"]
-}
+# Removed as it's now handled by rules. json/api based.

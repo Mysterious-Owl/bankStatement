@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rule Engine - Transaction Categorization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            margin: auto;
+            border-radius: 0.5rem;
+            border: 1px solid #475569;
+        }
+
+        input,
+        textarea,
+        select {
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: #e2e8f0;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .category-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+
+<body class="p-6">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Rule Engine</h1>
+            <p class="text-gray-400 text-sm">Create regex-based rules to categorize transactions</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">Dashboard</a>
+            <a href="/data" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">Data Grid</a>
+            <a href="/reconcile" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">Reconcile</a>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="grid grid-cols-12 gap-6">
+
+        <!-- Left Sidebar: Categories -->
+        <div class="col-span-3">
+            <div class="card">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">Categories</h2>
+                    <button onclick="showCreateCategoryModal()"
+                        class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition">+ New</button>
+                </div>
+                <div id="categoryList" class="space-y-2"></div>
+            </div>
+
+            <!-- Stats Card -->
+            <div class="card mt-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-3">STATISTICS</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span>Total Rules:</span>
+                        <span id="totalRules" class="font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Unassigned:</span>
+                        <button onclick="viewUnassigned()" class="text-yellow-400 hover:underline font-bold"
+                            id="unassignedCount">0</button>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Conflicts:</span>
+                        <button onclick="viewConflicts()" class="text-red-400 hover:underline font-bold"
+                            id="conflictsCount">0</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Rule Editor -->
+        <div class="col-span-6">
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Rule Editor</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Rule Name</label>
+                        <input type="text" id="ruleName" placeholder="e.g., Food Delivery Services" class="w-full">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Category</label>
+                        <select id="ruleCategory" class="w-full">
+                            <option value="">Select category...</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Regex Pattern</label>
+                        <textarea id="rulePattern" rows="3" placeholder="e.g., swiggy|zomato|uber.*eats"
+                            class="w-full font-mono text-sm"></textarea>
+                        <p class="text-xs text-gray-400 mt-1">Use regex with capturing groups: (?P&lt;name&gt;pattern)
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Priority (higher wins in conflicts)</label>
+                        <input type="number" id="rulePriority" value="0" class="w-full">
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="testPattern()"
+                            class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition flex-1">
+                            Test Pattern
+                        </button>
+                        <button onclick="saveRule()"
+                            class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition flex-1">
+                            Save Rule
+                        </button>
+                        <button onclick="clearForm()"
+                            class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded transition">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Results -->
+            <div class="card mt-6" id="testResults" style="display: none;">
+                <h3 class="text-lg font-bold mb-3">Test Results</h3>
+                <div id="testResultsContent"></div>
+            </div>
+        </div>
+
+        <!-- Right: Rules List -->
+        <div class="col-span-3">
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Rules</h2>
+                <div id="rulesList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div id="transactionModal" class="modal">
+        <div class="modal-content p-6" style="width: 80%; max-height: 80%;">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold" id="modalTitle">Transactions</h2>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-2xl">×</button>
+            </div>
+            <div id="modalContent" class="overflow-auto"></div>
+        </div>
+    </div>
+
+    <!-- Category Create Modal -->
+    <div id="categoryModal" class="modal">
+        <div class="modal-content p-6" style="width: 400px;">
+            <h2 class="text-2xl font-bold mb-4">Create Category</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Name</label>
+                    <input type="text" id="newCategoryName" placeholder="e.g., Food & Dining" class="w-full">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Color</label>
+                    <input type="color" id="newCategoryColor" value="#3b82f6" class="w-full h-10">
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="createCategory()"
+                        class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition flex-1">Create</button>
+                    <button onclick="closeCategoryModal()"
+                        class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded transition">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let categories = [];
+        let rules = [];
+        let currentRuleId = null;
+
+        // Load initial data
+        async function loadData() {
+            await loadCategories();
+            await loadRules();
+            await updateStats();
+        }
+
+        async function loadCategories() {
+            const res = await fetch('/api/categories');
+            categories = await res.json();
+            renderCategories();
+            updateCategorySelect();
+        }
+
+        async function loadRules() {
+            const res = await fetch('/api/rules');
+            rules = await res.json();
+            renderRules();
+        }
+
+        function renderCategories() {
+            const container = document.getElementById('categoryList');
+            if (categories.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No categories yet</p>';
+                return;
+            }
+
+            container.innerHTML = categories.map(cat => `
+                <div class="flex items-center justify-between p-2 bg-gray-800 rounded hover:bg-gray-700 transition">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" style="background-color: ${cat.color}"></div>
+                        <span class="text-sm">${cat.name}</span>
+                    </div>
+                    <button onclick="deleteCategory('${cat.id}')" class="text-red-400 hover:text-red-300 text-sm">×</button>
+                </div>
+            `).join('');
+        }
+
+        function updateCategorySelect() {
+            const select = document.getElementById('ruleCategory');
+            select.innerHTML = '<option value="">Select category...</option>' +
+                categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+        }
+
+        function renderRules() {
+            const container = document.getElementById('rulesList');
+            document.getElementById('totalRules').textContent = rules.length;
+
+            if (rules.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No rules yet</p>';
+                return;
+            }
+
+            container.innerHTML = rules.map(rule => {
+                const category = categories.find(c => c.id === rule.category_id);
+                return `
+                    <div class="p-3 bg-gray-800 rounded hover:bg-gray-700 transition cursor-pointer" onclick="editRule('${rule.id}')">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="font-medium text-sm">${rule.name}</span>
+                            <div class="flex gap-1">
+                                <button onclick="event.stopPropagation(); viewRuleTransactions('${rule.id}')" class="text-blue-400 hover:text-blue-300 text-xs">View</button>
+                                <button onclick="event.stopPropagation(); deleteRule('${rule.id}')" class="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                            </div>
+                        </div>
+                        ${category ? `<span class="category-badge" style="background-color: ${category.color}20; color: ${category.color}">${category.name}</span>` : ''}
+                        <code class="block text-xs text-gray-400 mt-2 font-mono">${rule.pattern}</code>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showCreateCategoryModal() {
+            document.getElementById('categoryModal').classList.add('active');
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('categoryModal').classList.remove('active');
+            document.getElementById('newCategoryName').value = '';
+            document.getElementById('newCategoryColor').value = '#3b82f6';
+        }
+
+        async function createCategory() {
+            const name = document.getElementById('newCategoryName').value.trim();
+            const color = document.getElementById('newCategoryColor').value;
+
+            if (!name) {
+                alert('Please enter a category name');
+                return;
+            }
+
+            const category = {
+                id: Date.now().toString(),
+                name: name,
+                color: color
+            };
+
+            await fetch('/api/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(category)
+            });
+
+            closeCategoryModal();
+            await loadCategories();
+        }
+
+        async function deleteCategory(id) {
+            if (!confirm('Delete this category?')) return;
+            await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+            await loadCategories();
+        }
+
+        async function testPattern() {
+            const pattern = document.getElementById('rulePattern').value.trim();
+            if (!pattern) {
+                alert('Please enter a regex pattern');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/rules/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pattern })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alert(data.detail || 'Test failed');
+                    return;
+                }
+
+                const resultsDiv = document.getElementById('testResults');
+                const contentDiv = document.getElementById('testResultsContent');
+
+                resultsDiv.style.display = 'block';
+                contentDiv.innerHTML = `
+                    <div class="mb-4">
+                        <span class="text-2xl font-bold text-green-400">${data.count}</span>
+                        <span class="text-gray-400"> transactions matched</span>
+                        ${data.count > 100 ? '<span class="text-xs text-yellow-400 ml-2">(showing first 100)</span>' : ''}
+                    </div>
+                    <div class="max-h-96 overflow-y-auto">
+                        ${data.matches.map(m => `
+                            <div class="border-b border-gray-700 py-2">
+                                <div class="text-sm text-gray-400">${m.date} · ${m.bank}</div>
+                                <div class="text-sm">${m.description}</div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    Debit: ${m.debit || 0} | Credit: ${m.credit || 0}
+                                    ${JSON.stringify(m.extracted) !== '{}' && m.extracted.length > 0 ? ` | Extracted: ${JSON.stringify(m.extracted)}` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (err) {
+                alert('Error testing pattern: ' + err.message);
+            }
+        }
+
+        async function saveRule() {
+            const name = document.getElementById('ruleName').value.trim();
+            const pattern = document.getElementById('rulePattern').value.trim();
+            const category_id = document.getElementById('ruleCategory').value;
+            const priority = parseInt(document.getElementById('rulePriority').value) || 0;
+
+            if (!name || !pattern || !category_id) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            const rule = {
+                id: currentRuleId || Date.now().toString(),
+                name,
+                pattern,
+                category_id,
+                priority
+            };
+
+            await fetch('/api/rules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rule)
+            });
+
+            clearForm();
+            await loadRules();
+            await updateStats();
+        }
+
+        function editRule(id) {
+            const rule = rules.find(r => r.id === id);
+            if (!rule) return;
+
+            currentRuleId = rule.id;
+            document.getElementById('ruleName').value = rule.name;
+            document.getElementById('rulePattern').value = rule.pattern;
+            document.getElementById('ruleCategory').value = rule.category_id;
+            document.getElementById('rulePriority').value = rule.priority || 0;
+        }
+
+        async function deleteRule(id) {
+            if (!confirm('Delete this rule?')) return;
+            await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+            await loadRules();
+            await updateStats();
+        }
+
+        function clearForm() {
+            currentRuleId = null;
+            document.getElementById('ruleName').value = '';
+            document.getElementById('rulePattern').value = '';
+            document.getElementById('ruleCategory').value = '';
+            document.getElementById('rulePriority').value = '0';
+            document.getElementById('testResults').style.display = 'none';
+        }
+
+        async function viewRuleTransactions(ruleId) {
+            const res = await fetch(`/api/transactions/by-rule/${ruleId}`);
+            const transactions = await res.json();
+
+            const rule = rules.find(r => r.id === ruleId);
+            showTransactionModal(`Transactions for: ${rule ? rule.name : 'Rule'}`, transactions);
+        }
+
+        async function viewUnassigned() {
+            const res = await fetch('/api/transactions/unassigned');
+            const transactions = await res.json();
+            showTransactionModal('Unassigned Transactions', transactions);
+        }
+
+        async function viewConflicts() {
+            const res = await fetch('/api/transactions/conflicts');
+            const conflicts = await res.json();
+
+            const content = conflicts.map(c => `
+                <div class="border-b border-gray-700 py-3">
+                    <div class="text-sm text-gray-400">${c.date} · ${c.bank}</div>
+                    <div class="text-sm mb-2">${c.description}</div>
+                    <div class="text-xs text-yellow-400">
+                        Conflicts with ${c.matched_rules.length} rules:
+                        ${c.matched_rules.map(r => `<span class="ml-2">${r.rule_name} (Priority: ${r.priority})</span>`).join(',')}
+                    </div>
+                </div>
+            `).join('');
+
+            showGenericModal('Conflicting Transactions', content);
+        }
+
+        function showTransactionModal(title, transactions) {
+            const content = transactions.length === 0 ? '<p class="text-gray-500">No transactions found</p>' :
+                transactions.map(t => `
+                    <div class="border-b border-gray-700 py-2">
+                        <div class="text-sm text-gray-400">${t.date} · ${t.bank}</div>
+                        <div class="text-sm">${t.description}</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            Debit: ${t.debit || 0} | Credit: ${t.credit || 0}
+                            ${t.extracted ? ` | Extracted: ${JSON.stringify(t.extracted)}` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+            showGenericModal(title, content);
+        }
+
+        function showGenericModal(title, htmlContent) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalContent').innerHTML = htmlContent;
+            document.getElementById('transactionModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('transactionModal').classList.remove('active');
+        }
+
+        async function updateStats() {
+            try {
+                const [unassignedRes, conflictsRes] = await Promise.all([
+                    fetch('/api/transactions/unassigned'),
+                    fetch('/api/transactions/conflicts')
+                ]);
+
+                const unassigned = await unassignedRes.json();
+                const conflicts = await conflictsRes.json();
+
+                document.getElementById('unassignedCount').textContent = unassigned.length;
+                document.getElementById('conflictsCount').textContent = conflicts.length;
+            } catch (err) {
+                console.error('Error updating stats:', err);
+            }
+        }
+
+        // Load on page load
+        loadData();
+    </script>
+</body>
+
+</html>

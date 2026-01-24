@@ -221,3 +221,4 @@ def remove_empty_junk_columns(df):
         df = df.iloc[:, keep_indices]
         
     return df
+
