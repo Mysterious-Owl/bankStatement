@@ -67,6 +67,8 @@
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div class="flex items-center space-x-4">
                 <h1 class="text-3xl font-bold text-white">Financial Overview</h1>
+                <a href="/upload"
+                    class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm font-medium transition text-white">Upload</a>
                 <a href="/data"
                     class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm font-medium transition">Data Grid</a>
                 <a href="/rules"
@@ -124,12 +126,17 @@
         <!-- Main Charts -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="card">
-                <h3 class="font-semibold mb-4 text-lg">Daily Income vs Expense</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg">Daily Income vs Expense</h3>
+                </div>
                 <canvas id="dailyChart"></canvas>
             </div>
             <div class="card">
-                <h3 class="font-semibold mb-4 text-lg">Cumulative Balance Trend</h3>
-                <canvas id="balanceChart"></canvas>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg">Total Cash Available</h3>
+                    <p class="text-xs text-secondary">Aggregate Balance across selected banks</p>
+                </div>
+                <canvas id="cashChart"></canvas>
             </div>
         </div>
 
@@ -160,69 +167,51 @@
 
     <!-- Logic -->
     <script>
-        let rawData = [];
-        let filteredData = [];
         let charts = {};
-
         const currencyFormatter = new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
             maximumFractionDigits: 0
         });
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             Chart.defaults.color = '#9ca3af';
             Chart.defaults.borderColor = '#374151';
-            fetchData();
-        });
 
-        async function fetchData() {
-            try {
-                const response = await fetch('/data.csv');
-                const text = await response.text();
-
-                Papa.parse(text, {
-                    header: true,
-                    dynamicTyping: true,
-                    skipEmptyLines: true,
-                    complete: function (results) {
-                        rawData = results.data.map(row => ({
-                            ...row,
-                            DateObj: new Date(row.Date),
-                            Debit: parseFloat(String(row.Debit).replace(/,/g, '')) || 0,
-                            Credit: parseFloat(String(row.Credit).replace(/,/g, '')) || 0,
-                            Balance: parseFloat(String(row.Balance).replace(/,/g, '')) || 0
-                        }));
-
-                        // Sort by date
-                        rawData.sort((a, b) => a.DateObj - b.DateObj);
-
-                        initFilters();
-                        applyFilters();
-                    }
-                });
-            } catch (error) {
-                console.error("Error loading data:", error);
-                alert("Failed to load data. Make sure server is running.");
-            }
-        }
-
-        function initFilters() {
-            // 1. Set Indian Financial Year Defaults
+            // Set default dates
             const now = new Date();
             const currentMonth = now.getMonth() + 1;
             let startYear = now.getFullYear();
-            if (currentMonth < 4) startYear--; // FY starts April 1st
-
+            if (currentMonth < 4) startYear--;
             document.getElementById('startDate').value = `${startYear}-04-01`;
             document.getElementById('endDate').value = `${startYear + 1}-03-31`;
 
-            // 2. Populate bank multiselect (None checked by default)
-            const banks = [...new Set(rawData.map(d => d.Bank))].filter(Boolean).sort();
+            fetchDashboardData(true); // Initial fetch with bank list population
+        });
+
+        async function fetchDashboardData(initBanks = false) {
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            const selectedBanks = Array.from(document.querySelectorAll('.bank-checkbox:checked')).map(cb => cb.value);
+
+            let url = `/api/dashboard/summary?start_date=${start}&end_date=${end}`;
+            if (selectedBanks.length > 0) url += `&banks=${selectedBanks.join(',')}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                if (initBanks) populateBanks(data.banks);
+                updateUI(data);
+            } catch (err) {
+                console.error("Dashboard error:", err);
+            }
+        }
+
+        function populateBanks(banks) {
             const container = document.getElementById('individualBanks');
             container.innerHTML = '';
-
             banks.forEach(bank => {
                 const label = document.createElement('label');
                 label.className = "flex items-center space-x-2 p-1 hover:bg-gray-600 rounded cursor-pointer";
@@ -232,210 +221,113 @@
                 `;
                 container.appendChild(label);
             });
-            updateBankCount();
         }
-
-
 
         function updateBankCount() {
             const checked = document.querySelectorAll('.bank-checkbox:checked').length;
             const badge = document.getElementById('bankCount');
-
-            if (checked === 0) badge.textContent = 'All';
-            else badge.textContent = checked;
-
-            applyFilters();
+            badge.textContent = checked === 0 ? 'All' : checked;
+            fetchDashboardData();
         }
 
         function applyFilters() {
-            // Get selected banks
-            const selectedBanks = Array.from(document.querySelectorAll('.bank-checkbox:checked')).map(cb => cb.value);
-            const start = new Date(document.getElementById('startDate').value);
-            const end = new Date(document.getElementById('endDate').value);
-            if (!isNaN(end)) end.setHours(23, 59, 59);
-
-            filteredData = rawData.filter(row => {
-                if (!row.DateObj || isNaN(row.DateObj)) return false;
-
-                const dateMatch = (isNaN(start) || row.DateObj >= start) && (isNaN(end) || row.DateObj <= end);
-
-                // None selected = All selected
-                const bankMatch = selectedBanks.length === 0 || selectedBanks.includes(row.Bank);
-
-                return dateMatch && bankMatch;
-            });
-
-            updateMetrics();
-            updateCharts();
+            fetchDashboardData();
         }
 
-        function updateMetrics() {
-            const totalCr = filteredData.reduce((sum, r) => sum + r.Credit, 0);
-            const totalDr = filteredData.reduce((sum, r) => sum + r.Debit, 0);
-            const net = totalCr - totalDr;
+        function updateUI(data) {
+            // Stats
+            document.getElementById('totalCredit').textContent = currencyFormatter.format(data.metrics.total_credit);
+            document.getElementById('totalDebit').textContent = currencyFormatter.format(data.metrics.total_debit);
+            document.getElementById('netFlow').textContent = currencyFormatter.format(data.metrics.net_flow);
+            document.getElementById('txnCount').textContent = data.metrics.txn_count;
 
-            document.getElementById('totalCredit').textContent = currencyFormatter.format(totalCr);
-            document.getElementById('totalDebit').textContent = currencyFormatter.format(totalDr);
-            document.getElementById('netFlow').textContent = currencyFormatter.format(net);
-            document.getElementById('txnCount').textContent = filteredData.length;
-
-            // Color Net Flow
             const netEl = document.getElementById('netFlow');
-            netEl.className = `text-2xl font-bold ${net >= 0 ? 'text-blue-400' : 'text-red-400'}`;
+            netEl.className = `text-2xl font-bold ${data.metrics.net_flow >= 0 ? 'text-blue-400' : 'text-red-400'}`;
+
+            renderDailyChart(data.daily);
+            renderCashChart(data.cash_availability);
+            renderCategoryBreakdown(data.categories);
         }
 
-        function updateCharts() {
-            renderDailyChart();
-            renderBalanceChart();
-            renderCategoryChart();
-        }
-
-        function renderDailyChart() {
-            // Group by Date
-            const daily = {};
-            filteredData.forEach(row => {
-                const dateKey = row.DateObj.toISOString().split('T')[0];
-                if (!daily[dateKey]) daily[dateKey] = { cr: 0, dr: 0 };
-                daily[dateKey].cr += row.Credit;
-                daily[dateKey].dr += row.Debit;
-            });
-
-            const labels = Object.keys(daily).sort();
-            const dataCr = labels.map(d => daily[d].cr);
-            const dataDr = labels.map(d => daily[d].dr);
-
+        function renderDailyChart(daily) {
             const ctx = document.getElementById('dailyChart').getContext('2d');
             if (charts.daily) charts.daily.destroy();
 
             charts.daily = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: daily.labels,
                     datasets: [
-                        { label: 'Income', data: dataCr, backgroundColor: '#22c55e' },
-                        { label: 'Expense', data: dataDr, backgroundColor: '#ef4444' }
+                        { label: 'Income', data: daily.credit, backgroundColor: '#22c55e' },
+                        { label: 'Expense', data: daily.debit, backgroundColor: '#ef4444' }
                     ]
                 },
                 options: {
                     responsive: true,
-                    scales: {
-                        x: { stacked: false },
-                        y: { beginAtZero: true }
-                    }
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
                 }
             });
         }
 
-        function renderBalanceChart() {
-            // For Balance, we can't just sum filtered rows if we filter by date because balance is cumulative.
-            // Ideally balance should come from the 'Balance' column of the LAST transaction of that day.
-            // If filtering by bank, use raw balance? Or re-calculate?
-            // Using raw balance is tricky if multiple banks are selected (sum of balances?).
-            // Let's approximate: Sum of balances of last transaction per bank for that day?
-            // Or simpler: Just track cumulative Net Flow relative to start of period? 
-            // Let's stick to valid "Balance" column if 1 bank picked, else cumulative Net Flow.
+        function renderCashChart(cash) {
+            const ctx = document.getElementById('cashChart').getContext('2d');
+            if (charts.cash) charts.cash.destroy();
 
-            const selectedBanks = Array.from(document.querySelectorAll('.bank-checkbox:checked')).map(cb => cb.value);
-            let labels = [];
-            let data = [];
-
-            if (selectedBanks.length === 1) {
-                // Single bank mode: visualising the Balance column
-                // Group by date, take LAST balance
-                const dailyBal = {};
-                filteredData.forEach(row => {
-                    const dateKey = row.DateObj.toISOString().split('T')[0];
-                    dailyBal[dateKey] = row.Balance; // Overwrite, so last one stays (since sorted)
-                });
-                labels = Object.keys(dailyBal).sort();
-                data = labels.map(d => dailyBal[d]);
-            } else {
-                // All banks: Visualise cumulative Net Flow over the period
-                // Start from 0
-                let runBal = 0;
-                const dailyNet = {};
-
-                filteredData.forEach(row => {
-                    const dateKey = row.DateObj.toISOString().split('T')[0];
-                    if (!dailyNet[dateKey]) dailyNet[dateKey] = 0;
-                    dailyNet[dateKey] += (row.Credit - row.Debit);
-                });
-
-                labels = Object.keys(dailyNet).sort();
-                data = labels.map(d => {
-                    runBal += dailyNet[d];
-                    return runBal;
-                });
-            }
-
-            const ctx = document.getElementById('balanceChart').getContext('2d');
-            if (charts.balance) charts.balance.destroy();
-
-            charts.balance = new Chart(ctx, {
+            charts.cash = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: cash.labels,
                     datasets: [{
-                        label: selectedBanks.length === 1 ? 'Closing Balance' : 'Cumulative Net Flow',
-                        data: data,
+                        label: 'Total Available Cash',
+                        data: cash.data,
                         borderColor: '#3b82f6',
-                        tension: 0.1,
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
                         fill: true,
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)'
+                        tension: 0.1,
+                        pointRadius: 0
                     }]
                 },
-                options: { responsive: true }
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: false } }
+                }
             });
         }
 
-        function renderCategoryChart() {
-            // Group Debits by Category
-            const cats = {};
-            let totalDr = 0;
-
-            filteredData.forEach(row => {
-                if (row.Debit > 0) {
-                    const cat = row.Category || 'Uncategorized';
-                    if (!cats[cat]) cats[cat] = 0;
-                    cats[cat] += row.Debit;
-                    totalDr += row.Debit;
-                }
-            });
-
-            // Sort top 10
-            const sortedCats = Object.entries(cats).sort((a, b) => b[1] - a[1]);
-
-            // Populating Chart
-            const labels = sortedCats.map(x => x[0]);
-            const values = sortedCats.map(x => x[1]);
-
+        function renderCategoryBreakdown(cats) {
+            // Chart
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if (charts.category) charts.category.destroy();
 
             charts.category = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: labels,
+                    labels: cats.labels,
                     datasets: [{
-                        data: values,
+                        data: cats.values,
                         backgroundColor: [
                             '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981',
                             '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#94a3b8'
                         ]
                     }]
-                }
+                },
+                options: { plugins: { legend: { display: false } } }
             });
 
-            // Populate Table
+            // Table
             const tbody = document.getElementById('categoryTableBody');
             tbody.innerHTML = '';
-            sortedCats.forEach(([cat, amount]) => {
+            const total = cats.values.reduce((a, b) => a + b, 0);
+
+            cats.labels.forEach((label, i) => {
+                const val = cats.values[i];
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-gray-700 hover:bg-gray-700/50";
                 tr.innerHTML = `
-                    <td class="px-4 py-2 text-gray-300">${cat}</td>
-                    <td class="px-4 py-2 text-right text-white font-medium">${currencyFormatter.format(amount)}</td>
-                    <td class="px-4 py-2 text-right text-gray-400">${((amount / totalDr) * 100).toFixed(1)}%</td>
+                    <td class="px-4 py-2 text-gray-300 font-medium">${label}</td>
+                    <td class="px-4 py-2 text-right text-white tabular-nums">${currencyFormatter.format(val)}</td>
+                    <td class="px-4 py-2 text-right text-gray-400 text-xs">${((val / total) * 100).toFixed(1)}%</td>
                 `;
                 tbody.appendChild(tr);
             });

@@ -102,48 +102,28 @@ def check_bank_aggregate(df, bank_name):
         "Consistency": status_msg
     }
 
-def main():
+def run_reconciliation():
     if not os.path.exists(config.MEGA_STATEMENT_PARQUET):
-        print("Merged data not found. Run pipeline first.")
-        return
+        return {"error": "Merged data not found. Run pipeline first."}
         
     df = pd.read_parquet(config.MEGA_STATEMENT_PARQUET)
     
-    print("\n" + "="*50)
-    print("STEP 1: PER FILE RECONCILIATION")
-    print("="*50)
-    
-    results = []
-    
+    per_file = []
     # Group by SourceFile
     for filename, group in df.groupby('SourceFile'):
         res = check_file_math(group, filename)
-        results.append(res)
+        per_file.append(res)
         
-    res_df = pd.DataFrame(results)
-    if not res_df.empty:
-        print(res_df.to_string(index=False, formatters={
-            'TotalCredit': '{:,.2f}'.format,
-            'TotalDebit': '{:,.2f}'.format
-        }))
-        
-    print("\n" + "="*50)
-    print("STEP 2: BANK LEVEL SUMMARY")
-    print("="*50)
-    
-    bank_results = []
+    bank_level = []
     for bank, group in df.groupby('Bank'):
-        # For Bank Level, we run the Aggregate Check (Start vs End)
-        # instead of the fragile row-by-row check which breaks on sort
         res = check_bank_aggregate(group, bank)
-        bank_results.append(res)
+        bank_level.append(res)
         
-    bank_res_df = pd.DataFrame(bank_results)
-    if not bank_res_df.empty:
-        print(bank_res_df.to_string(index=False, formatters={
-            'TotalCredit': '{:,.2f}'.format,
-            'TotalDebit': '{:,.2f}'.format
-        }))
+    return {
+        "per_file": per_file,
+        "bank_level": bank_level
+    }
 
 if __name__ == "__main__":
-    main()
+    res = run_reconciliation()
+    print(res)

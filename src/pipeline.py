@@ -17,10 +17,9 @@ def generate_txn_id(row):
     s = f"{row.get('Date')}{row.get('Description')}{row.get('Debit')}{row.get('Credit')}{row.get('Balance')}{row.get('RefNumber')}"
     return hashlib.md5(s.encode('utf-8')).hexdigest()
 
-def main():
+def run_pipeline(custom_files=None, bank_overrides=None):
     if not os.path.exists(config.MAPPING_FILE):
-        print("Mapping file not found! Please run src/generate_mapping.py first.")
-        return
+        return {"error": "Mapping file not found! Please run src/generate_mapping.py first."}
 
     mapping_df = pd.read_csv(config.MAPPING_FILE)
     passwords = get_passwords(config.PASS_FILE)
@@ -28,8 +27,16 @@ def main():
     all_txns = []
     
     import glob
-    files = glob.glob(os.path.join(config.RAW_DIR, "*"))
+    files = custom_files if custom_files else glob.glob(os.path.join(config.RAW_DIR, "*"))
     
+    summary = {
+        "files_processed": 0,
+        "files_skipped": 0,
+        "total_rows_before_dedup": 0,
+        "total_rows_after_dedup": 0,
+        "bank_counts": {}
+    }
+
     for f in files:
         if not (f.endswith('.xls') or f.endswith('.xlsx') or f.endswith('.csv')):
             continue
@@ -38,12 +45,14 @@ def main():
         col_map = get_file_mapping(mapping_df, basename)
         if not col_map:
             print(f"No mapping found for {basename}, skipping...")
+            summary["files_skipped"] += 1
             continue
             
         print(f"Processing {basename}...")
         df = try_open_workbook(f, passwords)
         if df is None:
             print(f"Failed to open {basename}")
+            summary["files_skipped"] += 1
             continue
             
         # 1. Remove Leading Empty Columns (Indentation)
@@ -127,15 +136,7 @@ def main():
             final_df['Description'] = ""
             
         # 3. Handle Money and Other Columns (Debit, Credit, Balance, RefNumber)
-        # Strategy: Take first mapped. If multiple map to Debit/Credit, user probably mapped separate columns. 
-        # If user mapped "Withdrawal" -> Debit and "Dr" -> Debit, we might want to coalesce or sum?
-        # For simplicity: Coalesce (take first non-null) or just take first?
-        # Let's take first for now as per "Merge descriptions" instruction implies logic mainly for desc. 
-        # But for numeric, usually it's one column.
         
-        if "PPBL" in basename.upper(): 
-            print('PPBL')
-
         # New: Handle "Amount" + "Type" schema
         amt_cols = std_to_raw.get('Amount', [])
         type_cols = std_to_raw.get('TxnType', [])
@@ -159,9 +160,6 @@ def main():
              if 'Credit' not in final_df.columns: final_df['Credit'] = 0
              
              # Convert amount to float first
-             # We reuse clean_currency logic later but need basic float here
-             # Let's defer strict cleaning, just ensure we can parse
-             # Helper to parse amount loosely
              def parse_float(x):
                  import re
                  try:
@@ -173,10 +171,6 @@ def main():
              # Check for 'debit' or 'dr' in type
              is_credit = raw_type.str.contains('credit') | raw_type.str.contains('cr') | raw_type.str.contains('c')
              is_debit = raw_type.str.contains('debit') | raw_type.str.contains('dr') | raw_type.str.contains('d')
-             
-             # If mapping exists, overwrite
-             # Note: This overwrites any "Debit" / "Credit" distinct columns if they existed via other mapping.
-             # We assume if user mapped Amount/Type, they want this.
              
              final_df.loc[is_debit, 'Debit'] = floats[is_debit]
              final_df.loc[is_credit, 'Credit'] = floats[is_credit]
@@ -211,9 +205,6 @@ def main():
         final_df = final_df[~((final_df['Debit'] == 0) & (final_df['Credit'] == 0) & (final_df['Balance'] == 0))]
         
         # --- Handle Intra-Day Sorting (Index Normalization) ---
-        # Bank statements can be Ascending (Oldest Top) or Descending (Newest Top).
-        # We want SortIndex to always represent time order (Low = Early, High = Late).
-        
         valid_dates = final_df['Date'].dropna()
         is_descending = False
         
@@ -224,30 +215,40 @@ def main():
                 is_descending = True
         
         if is_descending:
-            # If Newest Top (Row 0 is late), we want SortIndex to be High for Row 0.
-            # So we invert the index: 0 -> N, 1 -> N-1 ...
             final_df['SortIndex'] = range(len(final_df)-1, -1, -1)
         else:
-            # If Oldest Top (Row 0 is early), SortIndex = 0, 1...
             final_df['SortIndex'] = range(len(final_df))
             
         final_df['OriginalIndex'] = final_df.index # Keep for reference
         
         # Bank Name
-        if "HDFC" in basename.upper(): final_df['Bank'] = "HDFC"
-        elif "SBI" in basename.upper(): final_df['Bank'] = "SBI"
-        elif "IDFC" in basename.upper(): final_df['Bank'] = "IDFC"
-        elif "PNB" in basename.upper(): final_df['Bank'] = "PNB"
-        elif "KOTAK" in basename.upper(): final_df['Bank'] = "KOTAK"
-        elif "PPBL" in basename.upper(): final_df['Bank'] = "PPBL"
-        elif "UNITYMOM" in basename.upper(): final_df['Bank'] = "UNITYMOM"
-        elif "UNITYTAN" in basename.upper(): final_df['Bank'] = "UNITYTAN"
-        else: final_df['Bank'] = "Unknown"
+        bank_name = "Unknown"
+        
+        # Priority 1: Explicit Override from caller
+        if bank_overrides and basename in bank_overrides:
+            bank_name = bank_overrides[basename]
+        else:
+            # Priority 2: Heuristics from filename
+            base_upper = basename.upper()
+            if "HDFC" in base_upper: bank_name = "HDFC"
+            elif "SBI" in base_upper: bank_name = "SBI"
+            elif "IDFC" in base_upper: bank_name = "IDFC"
+            elif "PNB" in base_upper: bank_name = "PNB"
+            elif "KOTAK" in base_upper: bank_name = "KOTAK"
+            elif "PPBL" in base_upper: bank_name = "PPBL"
+            elif "UNITYMOM" in base_upper: bank_name = "UNITYMOM"
+            elif "UNITYTAN" in base_upper: bank_name = "UNITYTAN"
+            
+        final_df['Bank'] = bank_name
+        
+        summary["bank_counts"][bank_name] = summary["bank_counts"].get(bank_name, 0) + 1
+        summary["files_processed"] += 1
         
         all_txns.append(final_df)
         
     if all_txns:
         mega_df = pd.concat(all_txns, ignore_index=True)
+        summary["total_rows_before_dedup"] = len(mega_df)
         
         # Sort by Date, then Normalized SortIndex (Time Order), then Bank
         mega_df.sort_values(by=['Date', 'SortIndex', 'Bank'], inplace=True)
@@ -255,63 +256,41 @@ def main():
         mega_df['TxnID'] = mega_df.apply(generate_txn_id, axis=1)
         
         # --- Duplicate Reporting Logic ---
-        # Find all duplicates (keep=False marks all duplicates as True)
         dupes_mask = mega_df.duplicated(subset=['TxnID'], keep=False)
         
         if dupes_mask.any():
             dupes_df = mega_df[dupes_mask].copy()
-            # We want to group by TxnID to keep pairs together
-            # We also want to determine which one WOULD be kept (keep='first')
-            
             report_rows = []
-            # Group by TxnID
             grouped = dupes_df.groupby('TxnID')
             
             for txn_id, group in grouped:
-                # The pipeline uses drop_duplicates(keep='first') by default later
-                # So the first row in the group (as per original order) is 'Kept', others 'Deleted'
-                # Note: group preserves original index/order if not sorted, but groupby might not.
-                # Let's ensure we respect the original appearance order.
-                # However, groupby preserves order within groups usually?
-                # Let's safely sort by index if needed, or rely on iteration order.
-                
-                # To be sure of 'keep=first' behavior matching, we should look at original indices.
-                # But here we just want to flag them.
-                
-                # Let's create a local copy to modify
                 g = group.copy()
                 g['DuplicateStatus'] = 'Deleted'
-                g.iloc[0, g.columns.get_loc('DuplicateStatus')] = 'Kept' # Mark first as kept
+                g.iloc[0, g.columns.get_loc('DuplicateStatus')] = 'Kept'
                 
-                # Reorder columns to put Status first
                 cols = ['DuplicateStatus'] + [c for c in g.columns if c != 'DuplicateStatus']
                 g = g[cols]
                 
                 report_rows.append(g)
-                # Add empty row for separation
                 empty_row = pd.DataFrame([[''] * len(cols)], columns=cols)
                 report_rows.append(empty_row)
             
             if report_rows:
                 full_report = pd.concat(report_rows, ignore_index=True)
                 full_report.to_csv(config.DUPLICATES_REPORT_CSV, index=False)
-                print(f"Duplicates report saved to {config.DUPLICATES_REPORT_CSV}")
-        else:
-            print("No duplicates found.")
-
+        
         # Dedup (Maintain original behavior)
-        before_count = len(mega_df)
         mega_df.drop_duplicates(subset=['TxnID'], inplace=True)
-        print(f"Merged {len(all_txns)} files. Rows: {before_count} -> {len(mega_df)} (after dedup)")
+        summary["total_rows_after_dedup"] = len(mega_df)
         
         if not os.path.exists(config.ENRICHED_DIR): os.makedirs(config.ENRICHED_DIR)
 
         mega_df.to_parquet(config.MEGA_STATEMENT_PARQUET)
         mega_df.to_csv(config.MEGA_STATEMENT_CSV, index=False)
-        print(f"Saved to {config.MEGA_STATEMENT_PARQUET}")
-        
+        return summary
     else:
-        print("No transactions processed.")
+        return {"error": "No transactions processed."}
 
 if __name__ == "__main__":
-    main()
+    res = run_pipeline()
+    print(res)

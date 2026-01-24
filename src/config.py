@@ -7,6 +7,7 @@ BASE_DIR = r"q:/banks"
 # Directories
 RAW_DIR = os.path.join(BASE_DIR, "raw_statements")
 ENRICHED_DIR = os.path.join(BASE_DIR, "enriched_statements")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 FINAL_DIR = os.path.join(BASE_DIR, "final_statements")
 SRC_DIR = os.path.join(BASE_DIR, "src")
 
@@ -22,3 +23,8 @@ STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNum
 
 # Categorization
 # Removed as it's now handled by rules. json/api based.
+
+# Ensure directories exist
+for d in [RAW_DIR, ENRICHED_DIR, FINAL_DIR, UPLOAD_DIR]:
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)

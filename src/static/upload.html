@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Bank Statements</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #020617;
+            --bg-card: #0f172a;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-primary);
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone.active {
+            border-color: var(--accent-primary);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .step-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+
+        .step-active {
+            background: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .step-inactive {
+            background: #1e293b;
+            color: #64748b;
+        }
+
+        .mapping-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 0.75rem;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        input,
+        select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #f8fafc;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--accent-primary);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-5xl mx-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-12">
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight gradient-text">Statement Ingestion</h1>
+                <p class="text-slate-400 mt-1">Upload, Map, Consolidate, and Reconcile</p>
+            </div>
+            <a href="/" class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all text-sm font-medium">Back to
+                Ledger</a>
+        </header>
+
+        <!-- Stepper -->
+        <div class="flex items-center justify-center gap-4 mb-12">
+            <div class="flex flex-col items-center gap-2">
+                <div id="step1-icon" class="step-circle step-active">1</div>
+                <span class="text-xs font-medium text-slate-400">Upload</span>
+            </div>
+            <div class="w-12 h-px bg-slate-800"></div>
+            <div class="flex flex-col items-center gap-2">
+                <div id="step2-icon" class="step-circle step-inactive">2</div>
+                <span class="text-xs font-medium text-slate-400">Map Columns</span>
+            </div>
+            <div class="w-12 h-px bg-slate-800"></div>
+            <div class="flex flex-col items-center gap-2">
+                <div id="step3-icon" class="step-circle step-inactive">3</div>
+                <span class="text-xs font-medium text-slate-400">Process</span>
+            </div>
+        </div>
+
+        <!-- Step 1: Upload -->
+        <div id="step1" class="space-y-8 animate-in fade-in duration-500">
+            <div class="glass-panel p-8">
+                <div id="dropZone"
+                    class="drop-zone rounded-xl p-12 text-center flex flex-col items-center gap-4 cursor-pointer">
+                    <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-lg font-semibold">Click or drag and drop files</p>
+                        <p class="text-slate-400 text-sm">Supports XLS, XLSX, and CSV (Multiple files allowed)</p>
+                    </div>
+                    <input type="file" id="fileInput" multiple hidden>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8">
+                <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+                    <span class="text-blue-400">02.</span> Confirm Bank for Each File
+                </h3>
+                <div id="fileList" class="space-y-4">
+                    <p class="text-slate-500 italic text-center py-8">No files selected yet.</p>
+                </div>
+
+                <div class="mt-8 flex justify-end">
+                    <button id="uploadBtn" onclick="handleInitialUpload()"
+                        class="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2">
+                        Scan & Mapping Preview
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Mapping -->
+        <div id="step2" class="hidden space-y-8 animate-in slide-in-from-right duration-500">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold">Review Column Mappings</h2>
+                <div class="flex gap-2">
+                    <button onclick="goToStep(1)"
+                        class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Abort</button>
+                </div>
+            </div>
+
+            <div id="mappingContainer" class="space-y-12">
+                <!-- Mapping cards for each file injected here -->
+            </div>
+
+            <div class="flex justify-end pt-8">
+                <button onclick="handleProcessConfirm()"
+                    class="bg-indigo-600 hover:bg-indigo-500 px-10 py-4 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">
+                    Finalize Ingestion & Run Reconcile
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Success & Results -->
+        <div id="step3" class="hidden space-y-8 animate-in slide-in-from-bottom duration-500 text-center py-12">
+            <div
+                class="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-400 mx-auto mb-6">
+                <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="text-4xl font-bold">Ingestion Complete!</h2>
+            <p id="processSummary" class="text-slate-400 text-xl font-light max-w-2xl mx-auto">
+                Successfully processed files and merged transactions into the ledger.
+            </p>
+
+            <!-- Recon Summary Panel -->
+            <div class="text-left mt-12 grid grid-cols-1 gap-8">
+                <div class="glass-panel p-8">
+                    <h3 class="text-xl font-bold mb-6 text-indigo-400 border-b border-indigo-400/20 pb-2">Reconciliation
+                        Verification</h3>
+                    <div id="reconResults" class="space-y-6">
+                        <!-- Recon reports here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-center gap-4 pt-12">
+                <a href="/data" class="bg-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-500 transition-all">View
+                    Full Data</a>
+                <button onclick="location.reload()"
+                    class="bg-slate-800 px-8 py-3 rounded-xl font-bold hover:bg-slate-700 transition-all">Upload
+                    More</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay"
+        class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
+        <div class="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p id="loadingText" class="text-lg font-medium text-blue-400 animate-pulse">Processing ledger...</p>
+    </div>
+
+    <script>
+        const STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber", "Amount", "TxnType"];
+        let selectedFiles = [];
+        let uploadId = null;
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        const BANK_OPTIONS = [
+            "HDFC", "SBI", "IDFC", "PNB", "KOTAK", "PPBL", "UNITYMOM", "UNITYTAN", "Other"
+        ];
+
+        // Drag and Drop
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('active'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('active');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            handleFiles(e.dataTransfer.files);
+        };
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+
+        function handleFiles(files) {
+            const list = document.getElementById('fileList');
+            selectedFiles = [...files];
+
+            if (selectedFiles.length === 0) {
+                list.innerHTML = `<p class="text-slate-500 italic text-center py-8">No files selected yet.</p>`;
+                return;
+            }
+
+            list.innerHTML = selectedFiles.map((f, i) => `
+                <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-slate-900 border border-slate-800 p-4 rounded-lg file-item" data-index="${i}">
+                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                        <svg class="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <div class="truncate text-left">
+                            <div class="text-sm font-medium truncate" title="${f.name}">${f.name}</div>
+                            <div class="text-[10px] text-slate-500">${(f.size / 1024).toFixed(1)} KB</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                        <select class="bank-select bg-slate-950 border border-slate-700 text-xs rounded-md h-9 px-2 w-full md:w-48" onchange="toggleCustomBank(${i}, this.value)">
+                            <option value="">Select Bank...</option>
+                            ${BANK_OPTIONS.map(opt => `<option value="${opt}">${opt === 'Other' ? 'Other (Type below)' : opt}</option>`).join('')}
+                        </select>
+                        <input type="text" placeholder="Custom Bank Name" class="custom-bank-input hidden bg-slate-950 border border-slate-700 text-xs rounded-md h-9 px-2 w-full md:w-40" id="custom-${i}">
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleCustomBank(index, value) {
+            const input = document.getElementById(`custom-${index}`);
+            input.classList.toggle('hidden', value !== 'Other');
+            if (value === 'Other') input.focus();
+        }
+
+        let fileToBankMap = {};
+
+        async function handleInitialUpload() {
+            if (selectedFiles.length === 0) return alert('Please select files first');
+
+            const formData = new FormData();
+            const bankNames = [];
+            fileToBankMap = {};
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const item = document.querySelector(`.file-item[data-index="${i}"]`);
+                const select = item.querySelector('.bank-select');
+                const customInput = item.querySelector('.custom-bank-input');
+
+                let bank = select.value;
+                if (bank === 'Other') bank = customInput.value;
+
+                if (!bank) {
+                    alert(`Please specify the bank for file: ${selectedFiles[i].name}`);
+                    return;
+                }
+
+                formData.append('files', selectedFiles[i]);
+                bankNames.push(bank);
+
+                // Store for later (server prefixes files so we need to anticipate that)
+                const safeName = `${bank}_${selectedFiles[i].name}`;
+                fileToBankMap[safeName] = bank;
+            }
+
+            formData.append('bank_names', JSON.stringify(bankNames));
+
+            showLoading('Analyzing headers & extracting mapping candidates...');
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                renderMappings(data.candidate_mappings);
+                uploadId = data.upload_id;
+                goToStep(2);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function renderMappings(mappings) {
+            const container = document.getElementById('mappingContainer');
+            container.innerHTML = Object.entries(mappings).map(([filename, mapInfo]) => `
+                <div class="mapping-card p-6" data-filename="${filename}">
+                    <h4 class="font-bold flex items-center gap-2 mb-6">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                        ${filename}
+                    </h4>
+                    <div class="overflow-x-auto text-left">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-slate-500 uppercase text-[10px] tracking-widest border-b border-slate-800">
+                                    <th class="text-left pb-3 px-2">Raw File Column</th>
+                                    <th class="text-left pb-3 px-2">Standard Field Mapping</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800">
+                                ${mapInfo.raw_columns.map(col => {
+                const suggestion = mapInfo.mappings[col] || "";
+                return `
+                                        <tr>
+                                            <td class="py-3 px-2 font-medium text-slate-300">${col}</td>
+                                            <td class="py-3 px-2">
+                                                <select class="mapping-select w-full bg-slate-900/50 rounded-md border-slate-700 h-9 px-2" data-raw="${col}">
+                                                    <option value="">-- Ignored --</option>
+                                                    ${STANDARD_COLUMNS.map(std => `<option value="${std}" ${std === suggestion ? 'selected' : ''}>${std}</option>`).join('')}
+                                                </select>
+                                            </td>
+                                        </tr>
+                                    `;
+            }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function handleProcessConfirm() {
+            const mappingData = {};
+            document.querySelectorAll('.mapping-card').forEach(card => {
+                const filename = card.dataset.filename;
+                const fileMap = {};
+                card.querySelectorAll('.mapping-select').forEach(sel => {
+                    if (sel.value) fileMap[sel.dataset.raw] = sel.value;
+                });
+                mappingData[filename] = fileMap;
+            });
+
+            showLoading('Processing pipeline & running reconciliation...');
+
+            try {
+                const res = await fetch('/api/process-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        upload_id: uploadId,
+                        mappings: mappingData,
+                        banks: fileToBankMap
+                    })
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                renderResults(data);
+                goToStep(3);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function renderResults(data) {
+            const summary = document.getElementById('processSummary');
+            summary.innerHTML = `Successfully processed <b>${data.pipeline_summary.files_processed}</b> files and merged <b>${data.pipeline_summary.total_rows_after_dedup}</b> transactions into the ledger.`;
+
+            const reconDiv = document.getElementById('reconResults');
+
+            const bankRecs = data.recon_data.bank_level.map(b => `
+                <div class="flex justify-between items-center p-4 bg-slate-900/40 rounded-lg border border-slate-800">
+                    <div>
+                        <div class="font-bold text-slate-200">${b.Name}</div>
+                        <div class="text-[10px] text-slate-500">CR: ${b.TotalCredit.toLocaleString()} | DR: ${b.TotalDebit.toLocaleString()}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm ${b.Consistency.includes('Consistent') ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${b.Consistency}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            const fileRecs = data.recon_data.per_file.map(f => `
+                <tr class="text-xs">
+                    <td class="py-2 text-slate-400 truncate max-w-[200px]" title="${f.Name}">${f.Name}</td>
+                    <td class="text-right text-slate-300 tabular-nums">${f.TotalCredit.toLocaleString()}</td>
+                    <td class="text-right text-slate-300 tabular-nums">${f.TotalDebit.toLocaleString()}</td>
+                    <td class="text-right ${f.Consistency.includes('Consistent') ? 'text-emerald-500' : 'text-rose-400'}">${f.Consistency}</td>
+                </tr>
+            `).join('');
+
+            reconDiv.innerHTML = `
+                <div class="space-y-4">
+                    ${bankRecs}
+                </div>
+                <div class="mt-8">
+                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">File Level Breakdown</h4>
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-[10px] text-slate-600 uppercase border-b border-slate-800">
+                                <th class="text-left font-bold pb-2">Filename</th>
+                                <th class="text-right font-bold pb-2">Credit</th>
+                                <th class="text-right font-bold pb-2">Debit</th>
+                                <th class="text-right font-bold pb-2">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/50">
+                            ${fileRecs}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function goToStep(step) {
+            document.querySelectorAll('#step1, #step2, #step3').forEach(div => div.classList.add('hidden'));
+            document.getElementById(`step${step}`).classList.remove('hidden');
+
+            // Icons
+            for (let i = 1; i <= 3; i++) {
+                const icon = document.getElementById(`step${i}-icon`);
+                icon.className = `step-circle ${i === step ? 'step-active' : i < step ? 'bg-emerald-600 text-white' : 'step-inactive'}`;
+                if (i < step) icon.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+                else icon.innerHTML = i;
+            }
+        }
+
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        // Init
+        goToStep(1);
+    </script>
+</body>
+
+</html>
