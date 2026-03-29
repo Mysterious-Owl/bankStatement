@@ -144,7 +144,7 @@ def find_table_end(df):
     # Stop if 3 consecutive rows are mostly empty? 
     # Or stop at specific keywords?
     
-    footer_keywords = ["total", "closing balance", "grand total", "-- end of statement --", "** end of statement **", 'statement summary']
+    footer_keywords = ["total", "closing balance", "grand total", "-- end of statement --", "** end of statement **", 'statement summary', "Unless constituent notifies the bank immediately of any discrepancy found by him in his statement of", "Page No -"]
     
     end_idx = len(df)
     
@@ -182,16 +182,28 @@ def find_table_end(df):
 def remove_junk_rows(df):
     """
     Removes rows that contain only asterisks or are empty after stripping asterisks and whitespace.
+    Also removes rows where only 1 column is filled.
     """
     if df is None or df.empty:
         return df
         
     def is_junk(row):
-        # Join cols
+        # 1. Check for separator junk (stars, dashes, dots)
         val = "".join(row.fillna('').astype(str))
-        # Check if only composed of * and whitespace
-        # strip() removes whitespace, replace('*', '') removes stars
-        return val.strip().replace('*', '').replace('-', '') == ''
+        if val.strip().replace('*', '').replace('-', '').replace('.', '') == '':
+            return True
+            
+        # 2. Check for "thin" rows (only 1 or 0 columns filled)
+        # We count values that are not NaN and not just whitespace
+        filled_count = 0
+        for item in row:
+            if pd.notna(item) and str(item).strip() != '':
+                filled_count += 1
+        
+        if filled_count <= 1:
+            return True
+            
+        return False
         
     return df[~df.apply(is_junk, axis=1)]
 

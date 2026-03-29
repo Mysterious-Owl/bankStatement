@@ -3,6 +3,7 @@ import os
 import hashlib
 from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows, remove_leading_empty_columns, remove_empty_junk_columns
 import config
+import glob
 
 def get_file_mapping(mapping_df, filename):
     file_map = mapping_df[mapping_df['FileName'] == filename]
@@ -26,7 +27,6 @@ def run_pipeline(custom_files=None, bank_overrides=None):
     
     all_txns = []
     
-    import glob
     files = custom_files if custom_files else glob.glob(os.path.join(config.RAW_DIR, "*"))
     
     summary = {
@@ -95,7 +95,7 @@ def run_pipeline(custom_files=None, bank_overrides=None):
         # Initialize Final DF
         final_df = pd.DataFrame(index=cleaned_df.index)
         final_df['SourceFile'] = basename
-        final_df['Remarks'] = "" # Initialize Remarks
+        final_df['SystemRemarks'] = "" # Initialize SystemRemarks
         
         # 1. Handle Date
         # Strategy: Take first as primary. Compare others.
@@ -115,7 +115,7 @@ def run_pipeline(custom_files=None, bank_overrides=None):
                 if mask.any():
                     # Format: "ValDate: 2023-01-01; "
                     diff_strs = sec_col + ": " + sec_date_series[mask].dt.strftime('%Y-%m-%d')
-                    final_df.loc[mask, 'Remarks'] = final_df.loc[mask, 'Remarks'] + diff_strs + "; "
+                    final_df.loc[mask, 'SystemRemarks'] = final_df.loc[mask, 'SystemRemarks'] + diff_strs + "; "
         else:
             final_df['Date'] = pd.NaT
 
@@ -234,6 +234,7 @@ def run_pipeline(custom_files=None, bank_overrides=None):
             elif "SBI" in base_upper: bank_name = "SBI"
             elif "IDFC" in base_upper: bank_name = "IDFC"
             elif "PNB" in base_upper: bank_name = "PNB"
+            elif "AU" in base_upper: bank_name = "AU"
             elif "KOTAK" in base_upper: bank_name = "KOTAK"
             elif "PPBL" in base_upper: bank_name = "PPBL"
             elif "UNITYMOM" in base_upper: bank_name = "UNITYMOM"

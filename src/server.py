@@ -29,6 +29,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Data files
 CATEGORIES_FILE = os.path.join(config.BASE_DIR, "categories.json")
 RULES_FILE = os.path.join(config.BASE_DIR, "rules.json")
+TAGS_FILE = os.path.join(config.BASE_DIR, "tags.json")
+REMARKS_FILE = os.path.join(config.BASE_DIR, "remarks.json")
 
 # Pydantic Models
 class Category(BaseModel):
@@ -48,6 +50,26 @@ class Rule(BaseModel):
 class TestRuleRequest(BaseModel):
     pattern: str
 
+class ApplyTagsRequest(BaseModel):
+    group_key: str
+    tags: List[str]
+    create_rule: bool = True
+    grouping_columns: List[str]
+    entity_values: Optional[Dict[str, str]] = None
+
+class TransactionTagRequest(BaseModel):
+    txn_id: str
+    tags: List[str]
+    source: str = "manual"
+
+class CategoryTagsRequest(BaseModel):
+    category_id: str
+    tags: List[str]
+
+class RemarkUpdateRequest(BaseModel):
+    txn_id: str
+    remarks: str
+
 # Helper functions
 def load_json(filepath, default=[]):
     if os.path.exists(filepath):
@@ -58,6 +80,89 @@ def load_json(filepath, default=[]):
 def save_json(filepath, data):
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=2)
+
+# Tag Management Functions
+def load_tags():
+    """Load tags data structure, create if doesn't exist"""
+    if not os.path.exists(TAGS_FILE):
+        default_tags = {
+            "transaction_tags": {},
+            "rule_tag_mappings": [],
+            "category_tags": {},
+            "tag_index": []
+        }
+        save_json(TAGS_FILE, default_tags)
+        return default_tags
+    return load_json(TAGS_FILE, {
+        "transaction_tags": {},
+        "rule_tag_mappings": [],
+        "category_tags": {},
+        "tag_index": []
+    })
+
+def save_tags(tags_data):
+    """Save tags data"""
+    save_json(TAGS_FILE, tags_data)
+
+def add_to_tag_index(tags_data, new_tags):
+    """Deprecated: Tags are now derived in real-time"""
+    pass
+
+def get_transaction_tags(txn_context, tags_data):
+    """
+    Get tags for a transaction with priority resolution.
+    txn_context: dict containing standard columns and extracted_fields
+    Returns: (list of tags, primary_source)
+    """
+    txn_id = txn_context.get('txn_id')
+    all_matched_tags = set()
+    primary_source = "none"
+    
+    # 1. Manual tags
+    if txn_id in tags_data.get("transaction_tags", {}):
+        tag_info = tags_data["transaction_tags"][txn_id]
+        all_matched_tags.update(tag_info.get("tags", []))
+        if tag_info.get("source") == "manual":
+            primary_source = "manual"
+
+    # 2. Rule-based tags (Flexible Criteria)
+    rule_tags = []
+    for mapping in tags_data.get("rule_tag_mappings", []):
+        criteria = mapping.get("criteria", {})
+        if not criteria:
+            # Legacy support
+            rule_id = mapping.get("rule_id")
+            entity_values = mapping.get("entity_values", {})
+            if rule_id and txn_context.get('rule_id') == rule_id:
+                txn_entities = txn_context.get('entity_values', {})
+                if all(txn_entities.get(k) == v for k, v in entity_values.items()):
+                    rule_tags.extend(mapping.get("tags", []))
+            continue
+
+        match = True
+        for key, val in criteria.items():
+            txn_val = str(txn_context.get(key, ''))
+            if txn_val != str(val):
+                # Check entity values
+                ex_val = str(txn_context.get('entity_values', {}).get(key, ''))
+                if ex_val != str(val):
+                    match = False
+                    break
+        if match:
+            rule_tags.extend(mapping.get("tags", []))
+
+    if rule_tags:
+        all_matched_tags.update(rule_tags)
+        if primary_source == "none": primary_source = "rule"
+
+    # 3. Category tags
+    category_id = txn_context.get('category_id') or txn_context.get('category')
+    if category_id and category_id in tags_data.get("category_tags", {}):
+        cat_tags = tags_data["category_tags"][category_id]
+        all_matched_tags.update(cat_tags)
+        if primary_source == "none": primary_source = "category"
+    
+    return sorted(list(all_matched_tags)), primary_source
 
 # Page Routes
 @app.get("/")
@@ -75,6 +180,18 @@ async def read_recon():
 @app.get("/rules")
 async def read_rules():
     return FileResponse(os.path.join(STATIC_DIR, 'rules.html'))
+
+@app.get("/tags")
+async def read_tags():
+    return FileResponse(os.path.join(STATIC_DIR, 'tags.html'))
+
+@app.get("/category-tags")
+async def read_category_tags():
+    return FileResponse(os.path.join(STATIC_DIR, 'category-tags.html'))
+
+@app.get("/data")
+async def read_data_page():
+    return FileResponse(os.path.join(STATIC_DIR, 'data.html'))
 
 @app.get("/data.csv")
 async def get_data():
@@ -276,13 +393,58 @@ async def get_enriched_transactions():
     if df.empty:
         return []
     
-    # Convert to list of dicts and handle non-serializable values
-    # We use json.loads(df.to_json) for a quick and safe conversion
-    return json.loads(df.to_json(orient='records', date_format='iso'))
+    tags_data = load_tags()
+    
+    # Convert DataFrame to list of dicts with ISO dates
+    base_data = json.loads(df.to_json(orient='records', date_format='iso'))
+    
+    # Add tags to each transaction
+    for i, txn in enumerate(base_data):
+        # We need the original row for get_transaction_tags parameters
+        original_row = df.iloc[i]
+        txn_id = str(original_row.get('TxnID', i))
+        
+        ctx = {
+            "txn_id": txn_id,
+            "rule_id": original_row.get('matched_rule'),
+            "category_id": original_row.get('matched_category'),
+            "entity_values": original_row.get('extracted_fields', {}),
+            "bank": original_row.get('Bank'),
+            "Description": original_row.get('Description'),
+            "rule": original_row.get('matched_rule'),
+            "category": original_row.get('matched_category'),
+            "source_file": original_row.get('SourceFile')
+        }
+        
+        tags, source = get_transaction_tags(ctx, tags_data)
+        
+        txn['tags'] = tags
+        txn['tag_source'] = source
+        # Ensure txn_id is in the response
+        txn['txn_id'] = txn_id
+    
+    return base_data
 
 @app.get("/data")
 async def read_data():
     return FileResponse(os.path.join(STATIC_DIR, 'data.html'))
+
+@app.post("/api/transactions/remarks")
+async def update_remarks(request: RemarkUpdateRequest):
+    # Load manual remarks
+    remarks_data = load_json(REMARKS_FILE, {})
+    
+    # Update remark
+    remarks_data[request.txn_id] = request.remarks
+    
+    # Save back
+    save_json(REMARKS_FILE, remarks_data)
+        
+    # Invalidate cache
+    global _enriched_cache
+    _enriched_cache["data"] = None
+    
+    return {"success": True, "remarks": request.remarks}
 
 # --- Statement Ingestion APIs ---
 
@@ -413,21 +575,42 @@ async def process_statements(request: ProcessUploadRequest):
         "recon_data": recon_data
     }
 
+# In-memory cache for enriched data
+_enriched_cache = {
+    "data": None,
+    "last_mtime": 0,
+    "rules_mtime": 0
+}
+
 def get_enriched_data_df():
     data_path = config.MEGA_STATEMENT_CSV
+    rules_path = RULES_FILE
     
     if not os.path.exists(data_path):
         return pd.DataFrame()
         
+    data_mtime = os.path.getmtime(data_path)
+    rules_mtime = os.path.getmtime(rules_path) if os.path.exists(rules_path) else 0
+    
+    global _enriched_cache
+    if (_enriched_cache["data"] is not None and 
+        _enriched_cache["last_mtime"] == data_mtime and 
+        _enriched_cache["rules_mtime"] == rules_mtime):
+        return _enriched_cache["data"]
+
     df = pd.read_csv(data_path)
     rules = load_json(RULES_FILE, [])
     categories = load_json(CATEGORIES_FILE, [])
+    tags_data = load_tags()
+    all_manual_remarks = load_json(REMARKS_FILE, {})
+    
     category_map = {c['id']: c for c in categories}
     
     compiled_rules = []
     for rule in rules:
         try:
             compiled_rules.append({
+                'id': rule['id'],
                 'name': rule['name'],
                 'pattern': re.compile(rule['pattern'], re.IGNORECASE),
                 'priority': rule.get('priority', 0),
@@ -437,7 +620,7 @@ def get_enriched_data_df():
     
     compiled_rules.sort(key=lambda x: x['priority'], reverse=True)
     
-    def enrich_row(row):
+    def enrich_row(row, idx):
         desc = str(row.get('Description', ''))
         matched_rule = None
         extracted = {}
@@ -448,26 +631,63 @@ def get_enriched_data_df():
                 extracted = match.groupdict() if match.groupdict() else {f'group_{i+1}': g for i, g in enumerate(match.groups())}
                 break
         
+        rule_name = None
+        cat_name = 'Uncategorized'
+        cat_color = '#94a3b8'
+        rule_id = None
+        cat_id = None
+        
         if matched_rule:
-            cat = category_map.get(matched_rule['category_id'], {})
-            return matched_rule['name'], cat.get('name', 'Uncategorized'), cat.get('color', '#94a3b8'), extracted
-        return None, 'Uncategorized', '#94a3b8', {}
+            rule_id = matched_rule['id']
+            rule_name = matched_rule['name']
+            cat_id = matched_rule['category_id']
+            cat = category_map.get(cat_id, {})
+            cat_name = cat.get('name', 'Uncategorized')
+            cat_color = cat.get('color', '#94a3b8')
+        
+        # Add tags
+        txn_id = str(row.get('TxnID', idx))
+        ctx = {
+            "txn_id": txn_id,
+            "rule_id": rule_id,
+            "category_id": cat_id,
+            "entity_values": extracted,
+            "bank": row.get('Bank'),
+            "Description": desc,
+            "rule": rule_name,
+            "category": cat_name,
+            "source_file": row.get('SourceFile')
+        }
+        tags, source = get_transaction_tags(ctx, tags_data)
+        
+        # Get Manual Remarks
+        manual_remark = all_manual_remarks.get(txn_id, '')
+        
+        return rule_name, cat_name, cat_color, extracted, tags, manual_remark
 
     # Apply enrichment to dataframe
     if not df.empty:
-        enrichment_results = df.apply(enrich_row, axis=1)
-        df['matched_rule'] = [r[0] for r in enrichment_results]
-        df['matched_category'] = [r[1] for r in enrichment_results]
-        df['matched_category_color'] = [r[2] for r in enrichment_results]
-        df['extracted_fields'] = [r[3] for r in enrichment_results]
+        results = [enrich_row(r, i) for i, r in df.iterrows()]
+        df['matched_rule'] = [r[0] for r in results]
+        df['matched_category_color'] = [r[2] for r in results]
+        df['extracted_fields'] = [r[3] for r in results]
+        df['tags'] = [r[4] for r in results]
+        df['manual_remarks'] = [r[5] for r in results]
     else:
-        df['matched_rule'] = None
-        df['matched_category'] = 'Uncategorized'
-        df['matched_category_color'] = '#94a3b8'
-        df['extracted_fields'] = [{}]
+        df['matched_rule'] = []
+        df['matched_category'] = []
+        df['matched_category_color'] = []
+        df['extracted_fields'] = []
+        df['tags'] = []
+        df['manual_remarks'] = []
     
     # Ensure Date is datetime
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # Update cache
+    _enriched_cache["data"] = df
+    _enriched_cache["last_mtime"] = data_mtime
+    _enriched_cache["rules_mtime"] = rules_mtime
     
     return df
 
@@ -514,6 +734,17 @@ async def get_dashboard_summary(start_date: Optional[str] = None, end_date: Opti
 
     # Category Breakdown
     cat_breakdown = filtered_df[filtered_df['Debit'] > 0].groupby('matched_category')['Debit'].sum().sort_values(ascending=False)
+    
+    # Tag Breakdown
+    tags_all = []
+    for tags in filtered_df['tags']:
+        if isinstance(tags, list):
+            tags_all.extend(tags)
+    
+    tag_counts = {}
+    if tags_all:
+        tag_series = pd.Series(tags_all)
+        tag_counts = tag_series.value_counts().head(10).to_dict()
 
     return {
         "metrics": {
@@ -535,8 +766,361 @@ async def get_dashboard_summary(start_date: Optional[str] = None, end_date: Opti
             "labels": cat_breakdown.index.tolist(),
             "values": cat_breakdown.tolist()
         },
+        "tags": {
+            "labels": list(tag_counts.keys()),
+            "values": list(tag_counts.values())
+        },
         "banks": sorted(df['Bank'].unique().tolist())
     }
+
+# Tag API Endpoints
+@app.get("/api/tags/grouped")
+async def get_grouped_transactions(columns: Optional[str] = "rule,category"):
+    """
+    Group transactions by selected columns and return aggregated view with tag info
+    columns: comma-separated list like "rule,category,upi_id"
+    """
+    grouping_cols = [c.strip() for c in columns.split(",")]
+    
+    df = get_enriched_data_df()
+    if df.empty:
+        return []
+    
+    tags_data = load_tags()
+    rules = load_json(RULES_FILE, [])
+    categories = load_json(CATEGORIES_FILE, [])
+    
+    # Create lookup maps
+    rule_map = {r['id']: r for r in rules}
+    category_map = {c['id']: c for c in categories}
+    
+    grouped_data = []
+    
+    # Group by specified columns
+    for idx, row in df.iterrows():
+        group_key_parts = []
+        entity_values = {}
+        
+        rule_id = None
+        category_id = None
+        
+        for col in grouping_cols:
+            if col == "rule":
+                rule_id = row.get('matched_rule')
+                group_key_parts.append(f"rule:{rule_id}")
+            elif col == "category":
+                category_id = row.get('matched_category')
+                group_key_parts.append(f"category:{category_id}")
+            elif col == "bank":
+                group_key_parts.append(f"bank:{row.get('Bank', '')}")
+            elif col == "source_file":
+                group_key_parts.append(f"source:{row.get('SourceFile', '')}")
+            else:
+                # Assume it's an entity field
+                extracted = row.get('extracted_fields', {})
+                if isinstance(extracted, dict) and col in extracted:
+                    val = extracted[col]
+                    entity_values[col] = val
+                    group_key_parts.append(f"{col}:{val}")
+        
+        group_key = "|".join(group_key_parts)
+        
+        # Use TxnID from data
+        txn_id = str(row.get('TxnID', idx))
+        
+        # Build full context for tag resolution (independent of grouping)
+        ctx = {
+            "txn_id": txn_id,
+            "rule_id": row.get('matched_rule'),
+            "category_id": row.get('matched_category'),
+            "entity_values": row.get('extracted_fields', {}),
+            "bank": row.get('Bank'),
+            "Description": row.get('Description'),
+            "rule": row.get('matched_rule'),
+            "category": row.get('matched_category'),
+            "source_file": row.get('SourceFile')
+        }
+        
+        # Get tags for this transaction
+        tags, source = get_transaction_tags(ctx, tags_data)
+        
+        # Check if group already exists
+        existing_group = next((g for g in grouped_data if g['group_key'] == group_key), None)
+        
+        if existing_group:
+            existing_group['count'] += 1
+            existing_group['txn_ids'].append(txn_id)
+            # Aggregate tags
+            for tag in tags:
+                if tag in existing_group['tag_counts']:
+                    existing_group['tag_counts'][tag] += 1
+                else:
+                    existing_group['tag_counts'][tag] = 1
+        else:
+            # Initialize tag counts
+            tag_counts = {}
+            for tag in tags:
+                tag_counts[tag] = 1
+            
+            new_group = {
+                'group_key': group_key,
+                'rule': row.get('matched_rule'),
+                'category': row.get('matched_category'),
+                'category_color': row.get('matched_category_color'),
+                'bank': row.get('Bank'),
+                'source_file': row.get('SourceFile'),
+                'entity_values': entity_values,
+                'count': 1,
+                'txn_ids': [txn_id],
+                'tags': tags,
+                'tag_source': source,
+                'tag_counts': tag_counts
+            }
+            grouped_data.append(new_group)
+    
+    return grouped_data
+
+@app.post("/api/tags/apply")
+async def apply_tags(request: ApplyTagsRequest):
+    """Apply tags to a group of transactions using flexible criteria"""
+    tags_data = load_tags()
+    
+    # Parse group_key to extract criteria
+    parts = request.group_key.split("|")
+    criteria = {}
+    
+    for part in parts:
+        if ":" in part:
+            key, val = part.split(":", 1)
+            # Standardize keys to match txn context
+            if key == "source": key = "source_file"
+            criteria[key] = val
+    
+    # If create_rule is True, create mapping using the criteria
+    if request.create_rule and criteria:
+        # Check if mapping already exists with exact same criteria
+        existing_mapping = next((m for m in tags_data.get("rule_tag_mappings", [])
+                                if m.get("criteria") == criteria), None)
+        
+        old_tags = existing_mapping["tags"] if existing_mapping else []
+        removed_tags = set(old_tags) - set(request.tags)
+        
+        if existing_mapping:
+            existing_mapping["tags"] = request.tags
+        else:
+            new_mapping = {
+                "id": str(uuid.uuid4()),
+                "criteria": criteria,
+                "tags": request.tags,
+                "created_at": pd.Timestamp.now().isoformat()
+            }
+            tags_data.setdefault("rule_tag_mappings", []).append(new_mapping)
+
+        # If tags were removed, also clear them from manual transaction overrides in this group
+        if removed_tags:
+            # We need to find all transactions matching the criteria to clear their manual tags
+            df = get_enriched_data_df()
+            if not df.empty:
+                # Build filter
+                mask = pd.Series(True, index=df.index)
+                for key, val in criteria.items():
+                    if key == "rule": mask &= (df['matched_rule'] == val)
+                    elif key == "category": mask &= (df['matched_category'] == val)
+                    elif key == "bank": mask &= (df['Bank'] == val)
+                    elif key == "source_file": mask &= (df['SourceFile'] == val)
+                    else:
+                        # Entity field check
+                        mask &= df['extracted_fields'].apply(lambda x: x.get(key) == val if isinstance(x, dict) else False)
+                
+                matching_txn_ids = [str(df.iloc[i].get('TxnID', i)) for i in df[mask].index]
+                for tid in matching_txn_ids:
+                    if tid in tags_data.get("transaction_tags", {}):
+                        t_tags = tags_data["transaction_tags"][tid].get("tags", [])
+                        new_t_tags = [t for t in t_tags if t not in removed_tags]
+                        if len(new_t_tags) != len(t_tags):
+                            tags_data["transaction_tags"][tid]["tags"] = new_t_tags
+    
+    save_tags(tags_data)
+    return {"success": True, "message": "Tags applied successfully"}
+
+@app.post("/api/tags/transaction")
+async def update_transaction_tags(request: TransactionTagRequest):
+    """Update tags for a specific transaction (manual override)"""
+    tags_data = load_tags()
+    
+    # Add tags to index
+    add_to_tag_index(tags_data, request.tags)
+    
+    # Get existing tags or create new entry
+    existing_tags = []
+    if request.txn_id in tags_data.get("transaction_tags", {}):
+        existing_tags = tags_data["transaction_tags"][request.txn_id].get("tags", [])
+    
+    # Merge tags (avoid duplicates)
+    all_tags = list(set(existing_tags + request.tags))
+    
+    # Store transaction tags
+    tags_data.setdefault("transaction_tags", {})[request.txn_id] = {
+        "tags": all_tags,
+        "source": request.source,
+        "applied_at": pd.Timestamp.now().isoformat()
+    }
+    
+    save_tags(tags_data)
+    
+    return {"success": True, "tags": all_tags}
+
+@app.get("/api/tags/autocomplete")
+async def get_tag_autocomplete():
+    """Get list of all tags for autocomplete derived in real-time"""
+    tags_data = load_tags()
+    all_tags = set()
+    
+    # From manual overrides
+    for txn in tags_data.get("transaction_tags", {}).values():
+        all_tags.update(txn.get("tags", []))
+        
+    # From rule mappings
+    for mapping in tags_data.get("rule_tag_mappings", []):
+        all_tags.update(mapping.get("tags", []))
+        
+    # From category tags
+    for tags in tags_data.get("category_tags", {}).values():
+        all_tags.update(tags)
+        
+    return sorted(list(all_tags))
+
+@app.get("/api/tags/details/{group_key:path}")
+async def get_group_details(group_key: str):
+    """Get all transactions for a specific group"""
+    df = get_enriched_data_df()
+    if df.empty:
+        return []
+    
+    tags_data = load_tags()
+    
+    # Parse group_key to filter transactions
+    parts = group_key.split("|")
+    filter_conditions = {}
+    entity_filters = {}
+    
+    for part in parts:
+        if ":" in part:
+            key, val = part.split(":", 1)
+            if key == "rule":
+                filter_conditions['matched_rule'] = val
+            elif key == "category":
+                filter_conditions['matched_category'] = val
+            elif key == "bank":
+                filter_conditions['Bank'] = val
+            elif key == "source":
+                filter_conditions['SourceFile'] = val
+            else:
+                # It's an entity field
+                entity_filters[key] = val
+    
+    # Filter dataframe by standard columns
+    filtered = df.copy()
+    for col, val in filter_conditions.items():
+        if col in filtered.columns:
+            filtered = filtered[filtered[col] == val]
+    
+    # Filter by entity fields
+    if entity_filters:
+        def matches_entities(row):
+            extracted = row.get('extracted_fields', {})
+            if not isinstance(extracted, dict):
+                return False
+            for key, val in entity_filters.items():
+                if extracted.get(key) != val:
+                    return False
+            return True
+        
+        filtered = filtered[filtered.apply(matches_entities, axis=1)]
+    
+    # Convert to list of transactions with tags
+    transactions = []
+    for idx, row in filtered.iterrows():
+        # Use TxnID from data instead of row index
+        txn_id = str(row.get('TxnID', idx))
+        
+        ctx = {
+            "txn_id": txn_id,
+            "rule_id": row.get('matched_rule'),
+            "category_id": row.get('matched_category'),
+            "entity_values": row.get('extracted_fields', {}),
+            "bank": row.get('Bank'),
+            "Description": row.get('Description'),
+            "rule": row.get('matched_rule'),
+            "category": row.get('matched_category')
+        }
+        
+        tags, source = get_transaction_tags(ctx, tags_data)
+        
+        txn = json.loads(row.to_json())
+        txn['txn_id'] = txn_id  # Use consistent txn_id field
+        txn['tags'] = tags
+        txn['tag_source'] = source
+        transactions.append(txn)
+    
+    return transactions
+
+@app.get("/api/tags/category")
+async def get_category_tags():
+    """Get all category tags"""
+    tags_data = load_tags()
+    return tags_data.get("category_tags", {})
+
+@app.post("/api/tags/category")
+async def set_category_tags(request: CategoryTagsRequest):
+    """Set default tags for a category"""
+    tags_data = load_tags()
+    
+    # Add tags to index
+    add_to_tag_index(tags_data, request.tags)
+    
+    # Set category tags
+    tags_data.setdefault("category_tags", {})[request.category_id] = request.tags
+    
+    save_tags(tags_data)
+    
+    return {"success": True}
+
+@app.post("/api/tags/clear")
+async def clear_tags(group_key: Optional[str] = None, txn_ids: Optional[List[str]] = None):
+    """Clear tags for specified transactions or groups"""
+    tags_data = load_tags()
+    
+    if txn_ids:
+        # Clear specific transaction tags
+        for txn_id in txn_ids:
+            if txn_id in tags_data.get("transaction_tags", {}):
+                del tags_data["transaction_tags"][txn_id]
+    
+    if group_key:
+        # Parse group_key and remove corresponding rule mapping
+        parts = group_key.split("|")
+        rule_id = None
+        entity_values = {}
+        
+        for part in parts:
+            if ":" in part:
+                key, val = part.split(":", 1)
+                if key == "rule":
+                    rule_id = val
+                elif key not in ["category", "bank", "source"]:
+                    entity_values[key] = val
+        
+        # Remove matching rule mapping
+        if rule_id:
+            tags_data["rule_tag_mappings"] = [
+                m for m in tags_data.get("rule_tag_mappings", [])
+                if not (m.get("rule_id") == rule_id and m.get("entity_values") == entity_values)
+            ]
+    
+    save_tags(tags_data)
+    
+    return {"success": True}
 
 if __name__ == "__main__":
     print(f"Server running at http://localhost:8000")

@@ -162,6 +162,45 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+
+        /* Autocomplete Dropdown */
+        .autocomplete-container {
+            position: relative;
+        }
+
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 100;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        .autocomplete-item {
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .autocomplete-item:hover {
+            background: #1e293b;
+            color: #fff;
+        }
+
+        .autocomplete-item.selected {
+            background: #3b82f6;
+            color: #fff;
+        }
     </style>
 </head>
 
@@ -193,7 +232,7 @@
     <div class="glass-panel p-6 mb-8">
         <div class="flex flex-col lg:flex-row gap-6">
             <!-- Filter Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-1">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-1">
                 <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bank</label>
                     <select id="bankFilter" onchange="applyFilters()"
@@ -216,6 +255,16 @@
                             class="w-full h-9 px-2 rounded-lg text-[10px] bg-slate-900 border-slate-700">
                         <input type="date" id="endDate" onchange="applyFilters()"
                             class="w-full h-9 px-2 rounded-lg text-[10px] bg-slate-900 border-slate-700">
+                    </div>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tags (comma
+                        separated)</label>
+                    <div class="autocomplete-container">
+                        <input type="text" id="tagFilter" oninput="handleTagFilterInput(event)"
+                            placeholder="Filter tags..."
+                            class="w-full h-9 px-3 rounded-lg text-xs bg-slate-900 border-slate-700">
+                        <div id="tagAutocompleteDropdown" class="autocomplete-dropdown custom-scrollbar"></div>
                     </div>
                 </div>
                 <div class="space-y-1.5">
@@ -389,9 +438,11 @@
             'balance': { label: 'Balance', visible: false, type: 'standard', align: 'right' },
             'matched_category': { label: 'Category', visible: true, type: 'standard' },
             'matched_rule': { label: 'Rule', visible: true, type: 'standard' },
+            'tags': { label: 'Tags', visible: true, type: 'standard' },
             'ref_number': { label: 'Reference', visible: false, type: 'standard' },
             'source_file': { label: 'Source', visible: false, type: 'standard' },
-            'remarks': { label: 'Remarks', visible: false, type: 'standard' },
+            'manual_remarks': { label: 'Remarks', visible: false, type: 'standard' },
+            'system_remarks': { label: 'System Notes', visible: false, type: 'standard' },
             'original_category': { label: 'Legacy Cat', visible: false, type: 'standard' },
             'entity': { label: 'Legacy Entity', visible: false, type: 'standard' }
         };
@@ -400,6 +451,10 @@
             key: 'date',
             asc: false
         };
+
+        let allData = [];
+        let filteredData = [];
+        let tagAutocomplete = [];
 
         let paginationState = {
             page: 1,
@@ -416,6 +471,9 @@
             // Fetch Data
             await loadData();
 
+            // Load Autocomplete
+            await loadTagAutocomplete();
+
             // Detect Dynamic Columns
             detectDynamicColumns();
 
@@ -426,11 +484,24 @@
 
         function loadSettings() {
             const saved = localStorage.getItem('dataGridSettings');
+            let base = JSON.parse(JSON.stringify(COLUMN_DEFAULTS));
             if (saved) {
-                columnState = JSON.parse(saved);
-            } else {
-                columnState = JSON.parse(JSON.stringify(COLUMN_DEFAULTS));
+                try {
+                    const loaded = JSON.parse(saved);
+                    // Merge loaded into base to ensure new columns (like tags) appear
+                    Object.keys(loaded).forEach(k => {
+                        if (base[k]) {
+                            base[k].visible = loaded[k].visible;
+                        } else if (k.startsWith('rule_')) {
+                            // Preserve dynamic rule columns
+                            base[k] = loaded[k];
+                        }
+                    });
+                } catch (e) {
+                    console.error("Error loading settings:", e);
+                }
             }
+            columnState = base;
         }
 
         function saveSettings() {
@@ -450,9 +521,15 @@
                     });
 
                     // Standardize date to YYYY-MM-DD for simpler filtering
-                    if (normalized.date) {
+                    if (normalized.date && typeof normalized.date === 'string') {
                         normalized.date = normalized.date.split('T')[0];
                     }
+
+                    // Tags come from API now
+                    if (!normalized.tags) {
+                        normalized.tags = [];
+                    }
+
                     return normalized;
                 });
 
@@ -462,6 +539,62 @@
                 document.getElementById('tableBody').innerHTML = `<tr><td colspan="100" class="text-center py-20 text-red-400">Error loading ledger. Check console.</td></tr>`;
             }
         }
+
+        async function loadTagAutocomplete() {
+            try {
+                const res = await fetch('/api/tags/autocomplete');
+                tagAutocomplete = await res.json();
+            } catch (err) {
+                console.error('Failed to load autocomplete:', err);
+            }
+        }
+
+        function handleTagFilterInput(event) {
+            const input = event.target;
+            const value = input.value;
+            const dropdown = document.getElementById('tagAutocompleteDropdown');
+
+            // Re-apply filters on input
+            applyFilters();
+
+            // Logic for autocomplete on the current typing tag
+            const parts = value.split(',');
+            const currentPart = parts[parts.length - 1].trim().toLowerCase();
+
+            if (!currentPart) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            const matches = tagAutocomplete.filter(t => t.toLowerCase().includes(currentPart));
+            if (matches.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            dropdown.innerHTML = matches.map(m => `
+                <div class="autocomplete-item" onclick="selectTagFilter('${m}')">${m}</div>
+            `).join('');
+            dropdown.style.display = 'block';
+        }
+
+        function selectTagFilter(tag) {
+            const input = document.getElementById('tagFilter');
+            const value = input.value;
+            const parts = value.split(',');
+            parts[parts.length - 1] = tag;
+            input.value = parts.join(',') + ', ';
+            document.getElementById('tagAutocompleteDropdown').style.display = 'none';
+            input.focus();
+            applyFilters();
+        }
+
+        // Close dropdown on click outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.autocomplete-container')) {
+                document.getElementById('tagAutocompleteDropdown').style.display = 'none';
+            }
+        });
 
         function detectDynamicColumns() {
             const detectedGroups = new Set();
@@ -485,8 +618,6 @@
         }
 
         function populateFilters() {
-            const bankSelect = document.getElementById('bankFilter');
-            const banks = [...new Set(allData.map(t => t.bank))].filter(Boolean).sort();
             bankSelect.innerHTML = '<option value="">All Institutions</option>' +
                 banks.map(b => `<option value="${b}">${b}</option>`).join('');
 
@@ -621,19 +752,31 @@
         function applyFilters() {
             const bank = document.getElementById('bankFilter').value;
             const category = document.getElementById('categoryFilter').value;
+            const tagValue = document.getElementById('tagFilter').value;
             const start = document.getElementById('startDate').value;
             const end = document.getElementById('endDate').value;
             const search = document.getElementById('searchInput').value.toLowerCase();
+
+            // Split and clean tags for filtering
+            const tagsToFilter = tagValue ? tagValue.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
 
             filteredData = allData.filter(t => {
                 if (bank && t.bank !== bank) return false;
                 if (category === '__unmatched__' && t.matched_category && t.matched_category !== 'Uncategorized') return false;
                 if (category && category !== '__unmatched__' && t.matched_category !== category) return false;
+
+                if (tagsToFilter.length > 0) {
+                    if (!t.tags) return false;
+                    // AND logic: must contain all selected tags
+                    if (!tagsToFilter.every(tag => t.tags.includes(tag))) return false;
+                }
+
                 if (start && t.date < start) return false;
                 if (end && t.date > end) return false;
 
                 if (search) {
-                    const haystack = `${t.description} ${t.bank} ${t.matched_rule} ${t.debit} ${t.credit} ${t.ref_number} ${t.matched_category}`.toLowerCase();
+                    const tagText = t.tags ? t.tags.join(' ') : '';
+                    const haystack = `${t.description} ${t.bank} ${t.matched_rule} ${t.debit} ${t.credit} ${t.ref_number} ${t.matched_category} ${tagText}`.toLowerCase();
                     if (!haystack.includes(search)) return false;
                 }
                 return true;
@@ -649,8 +792,16 @@
                     valB = b.extracted_fields?.[columnState[sortState.key].field] || '';
                 }
 
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (sortState.key === 'debit' || sortState.key === 'credit' || sortState.key === 'balance') {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                } else if (sortState.key === 'tags') {
+                    valA = (valA || []).join(',').toLowerCase();
+                    valB = (valB || []).join(',').toLowerCase();
+                } else {
+                    if (typeof valA === 'string') valA = valA.toLowerCase();
+                    if (typeof valB === 'string') valB = valB.toLowerCase();
+                }
 
                 if (valA < valB) return sortState.asc ? -1 : 1;
                 if (valA > valB) return sortState.asc ? 1 : -1;
@@ -699,6 +850,14 @@
                     if (key === 'matched_category') {
                         if (row.matched_category) {
                             return `<td><span class="badge" style="background: ${row.matched_category_color}15; color: ${row.matched_category_color}; border: 1px solid ${row.matched_category_color}40">${row.matched_category}</span></td>`;
+                        }
+                        return `<td class="text-slate-600 text-[10px]">—</td>`;
+                    }
+
+                    if (key === 'tags') {
+                        if (row.tags && row.tags.length > 0) {
+                            const tagChips = row.tags.map(tag => `<span class="inline-block px-2 py-0.5 mr-1 mb-1 text-[9px] bg-blue-600/20 border border-blue-500/30 rounded text-blue-300">${tag}</span>`).join('');
+                            return `<td class="max-w-xs">${tagChips}</td>`;
                         }
                         return `<td class="text-slate-600 text-[10px]">—</td>`;
                     }
@@ -760,9 +919,30 @@
                                             </div>
                                         ` : '<span class="text-slate-500 italic">No automated rule matches for this entry.</span>'}
                                     </div>
-                                    <div class="text-xs text-slate-600 italic">
-                                        System Remarks: ${row.remarks || 'No remarks provided.'}
-                                    </div>
+                                    <div id="remarksContainer-${row.txn_id}" class="space-y-3">
+                                         <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Transaction Remarks</h4>
+                                         <div class="relative group">
+                                             <textarea 
+                                                 id="remark-input-${row.txn_id}"
+                                                 class="w-full bg-slate-900/80 border border-slate-800 rounded-lg p-3 text-sm focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all min-h-[80px] custom-scrollbar"
+                                                 placeholder="Add your analysis, notes or context here..."
+                                             >${row.manual_remarks || ''}</textarea>
+                                             <button 
+                                                 onclick="saveRemark('${row.txn_id}')"
+                                                 id="btn-save-${row.txn_id}"
+                                                 class="absolute bottom-3 right-3 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-[10px] font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                                             >
+                                                 Save Note
+                                             </button>
+                                         </div>
+                                         <div id="msg-${row.txn_id}" class="text-[10px] h-3 opacity-0 transition-opacity"></div>
+                                         ${row.system_remarks ? `
+                                            <div class="mt-4 p-3 bg-slate-900/30 border-l-2 border-slate-700 rounded-r-lg">
+                                                <h5 class="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Automated System Remarks</h5>
+                                                <p class="text-xs text-slate-400 italic">${row.system_remarks}</p>
+                                            </div>
+                                         ` : ''}
+                                     </div>
                                 </div>
                             </div>
                         </td>
@@ -786,6 +966,52 @@
             // Update Pagination UI
             document.getElementById('currentPage').textContent = paginationState.page;
             document.getElementById('totalPages').textContent = paginationState.totalPages;
+        }
+
+        async function saveRemark(txnId) {
+            const input = document.getElementById(`remark-input-${txnId}`);
+            const btn = document.getElementById(`btn-save-${txnId}`);
+            const msg = document.getElementById(`msg-${txnId}`);
+            const remarks = input.value;
+
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                const res = await fetch('/api/transactions/remarks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ txn_id: txnId, remarks: remarks })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    // Update local data
+                    const idx = allData.findIndex(t => t.txn_id === txnId);
+                    if (idx !== -1) allData[idx].manual_remarks = remarks;
+
+                    // Message
+                    msg.textContent = 'Remark saved successfully';
+                    msg.classList.remove('text-red-400');
+                    msg.classList.add('text-emerald-400', 'opacity-100');
+                    
+                    btn.classList.replace('bg-blue-600', 'bg-emerald-600');
+                    btn.textContent = 'Saved!';
+
+                    setTimeout(() => {
+                        msg.classList.remove('opacity-100');
+                        btn.classList.replace('bg-emerald-600', 'bg-blue-600');
+                        btn.textContent = 'Save Note';
+                        btn.disabled = false;
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error('Error saving remark:', err);
+                msg.textContent = 'Failed to save remark';
+                msg.classList.add('text-red-400', 'opacity-100');
+                btn.disabled = false;
+                btn.textContent = 'Retry Save';
+            }
         }
 
         function downloadCSV() {

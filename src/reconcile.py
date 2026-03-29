@@ -126,4 +126,7 @@ def run_reconciliation():
 
 if __name__ == "__main__":
     res = run_reconciliation()
-    print(res)
+    for bank in res["bank_level"]:
+        print(f"Bank: {bank['Name']}: {bank['Consistency']}")
+    for file in res["per_file"]:
+        print(f"File: {file['Name']}: {file['Consistency']}")

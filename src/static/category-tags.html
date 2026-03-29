@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Category Tags</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            border-radius: 12px;
+            font-size: 11px;
+            color: #60a5fa;
+            margin-right: 4px;
+        }
+
+        .tag-chip .remove {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .tag-chip .remove:hover {
+            opacity: 1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.5);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        tr:hover td {
+            background: rgba(51, 65, 85, 0.3);
+        }
+    </style>
+</head>
+
+<body class="p-8">
+    <header class="mb-8">
+        <nav class="flex justify-between items-center">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                Category Tags
+            </h1>
+            <div class="flex gap-4">
+                <a href="/" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Dashboard</a>
+                <a href="/data" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Data
+                    Grid</a>
+                <a href="/rules"
+                    class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Rules</a>
+                <a href="/tags" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Tags</a>
+            </div>
+        </nav>
+    </header>
+
+    <div class="glass-panel p-6 mb-4">
+        <p class="text-sm text-slate-400">
+            Set default tags for each category. These tags will automatically apply to transactions that match the
+            category but don't have more specific rule-based tags.
+        </p>
+    </div>
+
+    <!-- Category Tags Table -->
+    <div class="glass-panel overflow-hidden">
+        <div class="overflow-x-auto">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Default Tags</th>
+                    </tr>
+                </thead>
+                <tbody id="categoryTable">
+                    <tr>
+                        <td colspan="2" class="text-center py-20 text-slate-500">
+                            Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let categories = [];
+        let categoryTags = {};
+
+        async function init() {
+            await loadCategories();
+            await loadCategoryTags();
+            renderTable();
+        }
+
+        async function loadCategories() {
+            try {
+                const res = await fetch('/api/categories');
+                categories = await res.json();
+            } catch (err) {
+                console.error('Failed to load categories:', err);
+            }
+        }
+
+        async function loadCategoryTags() {
+            try {
+                const res = await fetch('/api/tags/category');
+                categoryTags = await res.json();
+            } catch (err) {
+                console.error('Failed to load category tags:', err);
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('categoryTable');
+
+            if (categories.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="text-center py-20 text-slate-500">No categories found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = categories.map(cat => {
+                const tags = categoryTags[cat.id] || [];
+                return `
+                    <tr>
+                        <td>
+                            <span class="px-2 py-1 rounded text-sm" style="background: ${cat.color}20; color: ${cat.color}; border: 1px solid ${cat.color}40">
+                                ${cat.name}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="flex flex-wrap items-center gap-2">
+                                ${tags.map(tag => `
+                                    <div class="tag-chip">
+                                        <span>${tag}</span>
+                                        <span class="remove" onclick='removeTag("${cat.id}", "${tag}")'>×</span>
+                                    </div>
+                                `).join('')}
+                                <input 
+                                    type="text" 
+                                    class="px-2 py-1 text-xs bg-slate-900 border border-slate-700 rounded focus:border-blue-500 focus:outline-none"
+                                    placeholder="Add tag..."
+                                    onkeydown="handleTagInput(event, '${cat.id}')"
+                                    style="min-width: 120px"
+                                >
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function handleTagInput(event, categoryId) {
+            if (event.key === 'Enter' || event.key === ',') {
+                event.preventDefault();
+                const tag = event.target.value.trim();
+                if (tag) {
+                    addTag(categoryId, tag);
+                    event.target.value = '';
+                }
+            }
+        }
+
+        async function addTag(categoryId, tag) {
+            if (!categoryTags[categoryId]) {
+                categoryTags[categoryId] = [];
+            }
+
+            if (!categoryTags[categoryId].includes(tag)) {
+                categoryTags[categoryId].push(tag);
+                await saveCategoryTags(categoryId);
+                renderTable();
+            }
+        }
+
+        async function removeTag(categoryId, tag) {
+            categoryTags[categoryId] = categoryTags[categoryId].filter(t => t !== tag);
+            await saveCategoryTags(categoryId);
+            renderTable();
+        }
+
+        async function saveCategoryTags(categoryId) {
+            try {
+                await fetch('/api/tags/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        category_id: categoryId,
+                        tags: categoryTags[categoryId]
+                    })
+                });
+            } catch (err) {
+                console.error('Failed to save category tags:', err);
+            }
+        }
+
+        // Initialize
+        init();
+    </script>
+</body>
+
+</html>
