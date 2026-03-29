@@ -119,13 +119,46 @@ def find_table_start(df):
     # We take the row AT header_idx as columns
     new_header = df.iloc[header_idx].copy()
     
-    # Forward fill merged/empty headers
-    # Replace empty strings with NaN then ffill
-    new_header = new_header.replace('', pd.NA).ffill()
+    # Custom grouping logic for merged/empty headers
+    final_header = []
+    i = 0
+    while i < len(new_header):
+        val = str(new_header.iloc[i]).strip()
+        if val == '' or pd.isna(new_header.iloc[i]):
+            # If start column is empty, just preserve it
+            final_header.append(new_header.iloc[i])
+            i += 1
+            continue
+            
+        group = [val]
+        j = i + 1
+        while j < len(new_header):
+            next_val = str(new_header.iloc[j]).strip()
+            if next_val == '' or pd.isna(new_header.iloc[j]):
+                group.append(next_val)
+                j += 1
+            else:
+                break
+        
+        if len(group) == 1:
+            final_header.append(group[0])
+        else:
+            final_header.extend([f"{group[0]}-{idx+1}" for idx in range(len(group))])
+        i = j
     
-    # Check if we have duplicate columns in header, pandas doesn't like that.
-    # We will deduplicate them later or let pandas handle it? 
-    # Better to keep as is for mapping.
+    # Ensure uniqueness (pandas requirement for robust mapping/access)
+    counts = {}
+    unique_header = []
+    for col in final_header:
+        c_str = str(col)
+        if c_str not in counts:
+            counts[c_str] = 0
+            unique_header.append(c_str)
+        else:
+            counts[c_str] += 1
+            unique_header.append(f"{c_str}.{counts[c_str]}")
+            
+    new_header = pd.Series(unique_header, index=new_header.index)
     
     new_df = df[header_idx + 1:].copy()
     new_df.columns = new_header

@@ -14,7 +14,7 @@ import pandas as pd
 import config
 import pipeline
 import reconcile
-from lib.parser import get_passwords, try_open_workbook, find_table_start
+from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows
 
 app = FastAPI()
 
@@ -27,10 +27,11 @@ if not os.path.exists(STATIC_DIR):
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Data files
-CATEGORIES_FILE = os.path.join(config.BASE_DIR, "categories.json")
-RULES_FILE = os.path.join(config.BASE_DIR, "rules.json")
-TAGS_FILE = os.path.join(config.BASE_DIR, "tags.json")
-REMARKS_FILE = os.path.join(config.BASE_DIR, "remarks.json")
+# Data files from config
+CATEGORIES_FILE = config.CATEGORIES_FILE
+RULES_FILE = config.RULES_FILE
+TAGS_FILE = config.TAGS_FILE
+REMARKS_FILE = config.REMARKS_FILE
 
 # Pydantic Models
 class Category(BaseModel):
@@ -451,6 +452,16 @@ async def update_remarks(request: RemarkUpdateRequest):
 # Temporary store for pending uploads
 pending_uploads = {}
 
+@app.get("/api/banks")
+async def get_banks():
+    if not os.path.exists(config.BANKS_FILE):
+        return []
+    try:
+        df = pd.read_csv(config.BANKS_FILE).fillna("")
+        return df.to_dict(orient="records")
+    except:
+        return []
+
 @app.post("/api/upload")
 async def upload_statements(
     bank_names: str = Form(...),
@@ -488,10 +499,18 @@ async def upload_statements(
 
     passwords = get_passwords(config.PASS_FILE)
 
+    # Grouping logic for identical files
+    # key: tuple of headers -> mapping info
+    grouped_mappings = {}
+
     for i, file in enumerate(files):
         current_bank = bank_list[i]
-        # Sanitize filename: bank_name_original_name
-        safe_name = f"{current_bank}_{file.filename}"
+        # Sanitize filename: prefix bank name only if not already present
+        if current_bank.upper() in file.filename.upper():
+            safe_name = file.filename
+        else:
+            safe_name = f"{current_bank}_{file.filename}"
+            
         file_path = os.path.join(upload_path, safe_name)
         
         with open(file_path, "wb") as buffer:
@@ -499,16 +518,59 @@ async def upload_statements(
         
         saved_files.append(file_path)
         
-        # Suggest Mapping
+        bank = current_bank
+
+        # Parse and Analyze
         df = try_open_workbook(file_path, passwords)
         if df is not None:
             cleaned_df, _ = find_table_start(df)
             if cleaned_df is not None:
-                headers = [str(c) for c in cleaned_df.columns]
-                candidate_mappings[safe_name] = {
-                    "raw_columns": headers,
-                    "mappings": suggest_mapping(headers)
-                }
+                # Filter to only the actual table data rows
+                cleaned_df = find_table_end(cleaned_df)
+                cleaned_df = remove_junk_rows(cleaned_df)
+                
+                headers = tuple(str(c) for c in cleaned_df.columns)
+                
+                if headers not in grouped_mappings:
+                    # Initialize group
+                    # Get first 5 rows and sanitize for JSON (replace inf/nan)
+                    sample_rows = cleaned_df.head(5).replace([float('inf'), float('-inf')], 0).fillna('').values.tolist()
+                    
+                    grouped_mappings[headers] = {
+                        "filenames": [safe_name],
+                        "headers_list": list(headers),
+                        "bank": bank, # We take the first bank as the representative
+                        "filled_counts": {h: 0 for h in headers},
+                        "distinct_samples": {h: set() for h in headers},
+                        "sample_data": sample_rows,
+                        "mappings": suggest_mapping(list(headers))
+                    }
+                else:
+                    grouped_mappings[headers]["filenames"].append(safe_name)
+
+                # Aggregate counts and distinct samples
+                group = grouped_mappings[headers]
+                for idx, col_name in enumerate(headers):
+                    col_data = cleaned_df.iloc[:, idx].replace('', pd.NA).dropna()
+                    group["filled_counts"][col_name] += int(len(col_data))
+                    
+                    # Add to distinct samples (limit to 10)
+                    if len(group["distinct_samples"][col_name]) < 10:
+                        uniques = col_data.unique()[:10]
+                        group["distinct_samples"][col_name].update([str(u) for u in uniques])
+
+    # Convert sets to lists for JSON and prepare final output
+    final_mappings = {}
+    for headers_tuple, info in grouped_mappings.items():
+        # Key by a combination or just the first filename
+        group_key = "|".join(info["filenames"])
+        info["distinct_samples"] = {h: list(s)[:10] for h, s in info["distinct_samples"].items()}
+        
+        # Filter suggested mappings for zero counts (as per previous request)
+        sug = info["mappings"]
+        info["mappings"] = {h: s for h, s in sug.items() if info["filled_counts"].get(h, 0) > 0}
+        
+        final_mappings[group_key] = info
 
     pending_uploads[upload_id] = {
         "files": saved_files,
@@ -517,13 +579,58 @@ async def upload_statements(
     
     return {
         "upload_id": upload_id,
-        "candidate_mappings": candidate_mappings
+        "candidate_mappings": final_mappings
     }
 
 class ProcessUploadRequest(BaseModel):
     upload_id: str
     mappings: Dict[str, Dict[str, str]]
     banks: Dict[str, str]
+
+@app.get("/api/mapping/history/{bank}")
+async def get_mapping_history(bank: str):
+    """Returns grouped historical mappings for a specific bank"""
+    if not os.path.exists(config.MAPPING_FILE):
+        return []
+    
+    df = pd.read_csv(config.MAPPING_FILE)
+    df = df.fillna('')
+    if 'Bank' not in df.columns or 'FileName' not in df.columns:
+        return []
+        
+    bank_df = df[df['Bank'].str.upper() == bank.upper()]
+    if bank_df.empty:
+        return []
+    
+    # Group by mapping configuration
+    # We want to see: Configuration -> List of files that used it
+    history = []
+    
+    # Group by FileName to get per-file mappings
+    file_groups = bank_df.groupby('FileName')
+    configs = {} # Using stringified JSON of mapping as key
+    
+    for fname, group in file_groups:
+        # Create a stable mapping dict (Raw -> Mapped)
+        mapping = dict(zip(group['RawColumn'], group['MappedTo']))
+        # Sort keys to ensure consistent hashing
+        config_key = json.dumps(dict(sorted(mapping.items())))
+        
+        if config_key not in configs:
+            configs[config_key] = {"mapping": mapping, "files": []}
+        configs[config_key]["files"].append(fname)
+        
+    # Format for response
+    for cfg in configs.values():
+        history.append({
+            "mapping": cfg["mapping"],
+            "count": len(cfg["files"]),
+            "examples": cfg["files"][:3] # Show first 3 files
+        })
+        
+    # Sort by count descending
+    history.sort(key=lambda x: x["count"], reverse=True)
+    return history
 
 @app.post("/api/process-upload")
 async def process_statements(request: ProcessUploadRequest):
@@ -535,9 +642,11 @@ async def process_statements(request: ProcessUploadRequest):
     # 1. Update column_mapping.csv
     new_mapping_rows = []
     for filename, mapping in request.mappings.items():
+        bank = request.banks.get(filename, "Other")
         for raw, std in mapping.items():
             new_mapping_rows.append({
                 "FileName": filename,
+                "Bank": bank,
                 "RawColumn": raw,
                 "MappedTo": std
             })
@@ -546,8 +655,15 @@ async def process_statements(request: ProcessUploadRequest):
         new_map_df = pd.DataFrame(new_mapping_rows)
         if os.path.exists(config.MAPPING_FILE):
              existing_df = pd.read_csv(config.MAPPING_FILE)
+             existing_df = existing_df.fillna('')
              # Remove existing for these files
              existing_df = existing_df[~existing_df['FileName'].isin(request.mappings.keys())]
+             
+             # Re-ensure columns exist for concat
+             for col in ['FileName', 'Bank', 'RawColumn', 'MappedTo']:
+                 if col not in existing_df.columns:
+                     existing_df[col] = ""
+                     
              combined_df = pd.concat([existing_df, new_map_df], ignore_index=True)
              combined_df.to_csv(config.MAPPING_FILE, index=False)
         else:
@@ -585,8 +701,8 @@ _enriched_cache = {
 def get_enriched_data_df():
     data_path = config.MEGA_STATEMENT_CSV
     rules_path = RULES_FILE
-    
     if not os.path.exists(data_path):
+    
         return pd.DataFrame()
         
     data_mtime = os.path.getmtime(data_path)
@@ -603,7 +719,7 @@ def get_enriched_data_df():
     categories = load_json(CATEGORIES_FILE, [])
     tags_data = load_tags()
     all_manual_remarks = load_json(REMARKS_FILE, {})
-    
+
     category_map = {c['id']: c for c in categories}
     
     compiled_rules = []
@@ -669,6 +785,7 @@ def get_enriched_data_df():
     if not df.empty:
         results = [enrich_row(r, i) for i, r in df.iterrows()]
         df['matched_rule'] = [r[0] for r in results]
+        df['matched_category'] = [r[1] for r in results]
         df['matched_category_color'] = [r[2] for r in results]
         df['extracted_fields'] = [r[3] for r in results]
         df['tags'] = [r[4] for r in results]
@@ -1085,6 +1202,23 @@ async def set_category_tags(request: CategoryTagsRequest):
     save_tags(tags_data)
     
     return {"success": True}
+
+@app.get("/data.csv")
+async def get_data_csv():
+    """Returns the enriched data in CSV format"""
+    df = get_enriched_data_df()
+    if df.empty:
+        return ""
+    
+    # Clean up for CSV export (stringify objects like tags/extracted_fields)
+    export_df = df.copy()
+    if 'tags' in export_df.columns:
+        export_df['tags'] = export_df['tags'].apply(lambda x: "; ".join(x) if isinstance(x, list) else "")
+    if 'extracted_fields' in export_df.columns:
+        export_df['extracted_fields'] = export_df['extracted_fields'].apply(lambda x: json.dumps(x) if isinstance(x, dict) else "")
+        
+    csv_data = export_df.to_csv(index=False)
+    return Response(content=csv_data, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=mega_statement_enriched.csv"})
 
 @app.post("/api/tags/clear")
 async def clear_tags(group_key: Optional[str] = None, txn_ids: Optional[List[str]] = None):

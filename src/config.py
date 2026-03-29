@@ -1,19 +1,29 @@
 import os
 
-# Base Directory - Assuming script is run from project root or handling relative paths
-# Hardcoding q:/banks as per project setup, but using os.path.join for subdirs
+# Base Directory
 BASE_DIR = r"q:/banks"
+DATA_DIR = os.path.join(BASE_DIR, "data")
+CONFIG_DIR = os.path.join(DATA_DIR, "config")
+STATEMENTS_DIR = os.path.join(DATA_DIR, "statements")
 
 # Directories
-RAW_DIR = os.path.join(BASE_DIR, "raw_statements")
-ENRICHED_DIR = os.path.join(BASE_DIR, "enriched_statements")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-FINAL_DIR = os.path.join(BASE_DIR, "final_statements")
+RAW_DIR = os.path.join(STATEMENTS_DIR, "raw_statements")
+ENRICHED_DIR = os.path.join(STATEMENTS_DIR, "enriched_statements")
+FINAL_DIR = os.path.join(STATEMENTS_DIR, "final_statements")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+EXTRACTION_DIR = os.path.join(STATEMENTS_DIR, "raw_extracted_tables")
 SRC_DIR = os.path.join(BASE_DIR, "src")
 
-# Files
-PASS_FILE = os.path.join(SRC_DIR, "passwords.txt")
-MAPPING_FILE = os.path.join(SRC_DIR, "column_mapping.csv")
+# Config Files
+PASS_FILE = os.path.join(CONFIG_DIR, "passwords.txt")
+MAPPING_FILE = os.path.join(CONFIG_DIR, "column_mapping.csv")
+RULES_FILE = os.path.join(CONFIG_DIR, "rules.json")
+CATEGORIES_FILE = os.path.join(CONFIG_DIR, "categories.json")
+TAGS_FILE = os.path.join(CONFIG_DIR, "tags.json")
+REMARKS_FILE = os.path.join(CONFIG_DIR, "remarks.json")
+BANKS_FILE = os.path.join(CONFIG_DIR, "bank_names.csv")
+
+# Data Files
 MEGA_STATEMENT_PARQUET = os.path.join(ENRICHED_DIR, "mega_statement.parquet")
 MEGA_STATEMENT_CSV = os.path.join(ENRICHED_DIR, "mega_statement.csv")
 DUPLICATES_REPORT_CSV = os.path.join(ENRICHED_DIR, "duplicates_report.csv")

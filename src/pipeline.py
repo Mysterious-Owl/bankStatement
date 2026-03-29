@@ -25,6 +25,15 @@ def run_pipeline(custom_files=None, bank_overrides=None):
     mapping_df = pd.read_csv(config.MAPPING_FILE)
     passwords = get_passwords(config.PASS_FILE)
     
+    # Load Bank Registry for metadata enrichment
+    banks_registry = {}
+    if os.path.exists(config.BANKS_FILE):
+        try:
+            b_df = pd.read_csv(config.BANKS_FILE).fillna("")
+            banks_registry = b_df.set_index('Name').to_dict(orient='index')
+        except:
+            pass
+    
     all_txns = []
     
     files = custom_files if custom_files else glob.glob(os.path.join(config.RAW_DIR, "*"))
@@ -71,10 +80,10 @@ def run_pipeline(custom_files=None, bank_overrides=None):
         cleaned_df = remove_empty_junk_columns(cleaned_df)
         
         # Save raw extracted table
-        if not os.path.exists(os.path.join(config.BASE_DIR, "raw_extracted_tables")):
-             os.makedirs(os.path.join(config.BASE_DIR, "raw_extracted_tables"), exist_ok=True)
+        if not os.path.exists(config.EXTRACTION_DIR):
+             os.makedirs(config.EXTRACTION_DIR, exist_ok=True)
              
-        raw_extracted_path = os.path.join(config.BASE_DIR, "raw_extracted_tables", f"{basename}.csv")
+        raw_extracted_path = os.path.join(config.EXTRACTION_DIR, f"{basename}.csv")
         cleaned_df.to_csv(raw_extracted_path, index=False)
         
         # Normalize raw columns to string
@@ -221,26 +230,31 @@ def run_pipeline(custom_files=None, bank_overrides=None):
             
         final_df['OriginalIndex'] = final_df.index # Keep for reference
         
-        # Bank Name
+        # Bank Name & Metadata
         bank_name = "Unknown"
+        owner = ""
+        tags = ""
         
-        # Priority 1: Explicit Override from caller
+        # Priority 1: Explicit Override from caller (UI selection)
         if bank_overrides and basename in bank_overrides:
             bank_name = bank_overrides[basename]
         else:
-            # Priority 2: Heuristics from filename
+            # Priority 2: Try to find bank name in filename as fallback
             base_upper = basename.upper()
-            if "HDFC" in base_upper: bank_name = "HDFC"
-            elif "SBI" in base_upper: bank_name = "SBI"
-            elif "IDFC" in base_upper: bank_name = "IDFC"
-            elif "PNB" in base_upper: bank_name = "PNB"
-            elif "AU" in base_upper: bank_name = "AU"
-            elif "KOTAK" in base_upper: bank_name = "KOTAK"
-            elif "PPBL" in base_upper: bank_name = "PPBL"
-            elif "UNITYMOM" in base_upper: bank_name = "UNITYMOM"
-            elif "UNITYTAN" in base_upper: bank_name = "UNITYTAN"
+            for known_name in banks_registry.keys():
+                if str(known_name).upper() in base_upper:
+                    bank_name = known_name
+                    break
             
+        # Enrich with Registry Metadata
+        if bank_name in banks_registry:
+            meta = banks_registry[bank_name]
+            owner = meta.get('Owner', '')
+            tags = meta.get('Tags', '')
+
         final_df['Bank'] = bank_name
+        final_df['Owner'] = owner
+        final_df['Tags'] = tags
         
         summary["bank_counts"][bank_name] = summary["bank_counts"].get(bank_name, 0) + 1
         summary["files_processed"] += 1
