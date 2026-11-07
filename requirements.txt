@@ -2,6 +2,7 @@ pandas
 openpyxl
 xlrd
 fastapi
+python-dotenv
 uvicorn
 python-multipart
 xlsxwriter

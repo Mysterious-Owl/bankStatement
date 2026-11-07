@@ -35,6 +35,22 @@ async def get_banks():
         return []
 
 
+@router.get("/api/bank-options")
+async def get_bank_options():
+    """
+    Bank names for the upload picker: KNOWN_BANKS from .env plus every bank
+    in the registry, sorted, with "Other" last.
+    """
+    names = set(config.KNOWN_BANKS)
+    if os.path.exists(config.BANKS_FILE):
+        try:
+            names.update(str(n) for n in pd.read_csv(config.BANKS_FILE)['Name'].dropna() if str(n).strip())
+        except (pd.errors.ParserError, KeyError, OSError, UnicodeDecodeError):
+            pass
+    names.discard("Other")
+    return sorted(names) + ["Other"]
+
+
 def _safe_name(bank, filename, taken):
     """
     The name a statement is stored under: the bank prefixed unless the file

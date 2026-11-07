@@ -12,3 +12,6 @@ data
 # Local tooling
 .claude/
 .pytest_cache/
+
+# Local settings (copy .env.example to .env)
+.env

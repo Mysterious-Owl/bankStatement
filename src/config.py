@@ -1,8 +1,37 @@
+"""
+Paths and settings.
+
+Machine- and person-specific values come from a `.env` file at the repo root
+(see `.env.example`), so they stay out of version control. Every setting has a
+generic default, so the app also runs with no `.env` at all.
+"""
 import os
 
-# Base Directory
-BASE_DIR = r"q:/banks"
-DATA_DIR = os.path.join(BASE_DIR, "data")
+from dotenv import load_dotenv
+
+# Repo root: the folder above src/. Derived, not hard-coded, so a checkout
+# works wherever it lives.
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+
+# Real environment variables win over .env, so a one-off override works.
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+
+def _env_list(name, default):
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return list(default)
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+# Where statements, mappings, rules and annotations live.
+DATA_DIR = os.path.abspath(os.getenv("BANKS_DATA_DIR") or os.path.join(BASE_DIR, "data"))
+
+# Bank names offered when uploading and recognised in statement filenames.
+# Banks added through bank_names.csv are merged in at runtime.
+KNOWN_BANKS = _env_list("KNOWN_BANKS", ["HDFC", "SBI", "ICICI", "AXIS", "KOTAK", "IDFC", "PNB"])
+
 CONFIG_DIR = os.path.join(DATA_DIR, "config")
 STATEMENTS_DIR = os.path.join(DATA_DIR, "statements")
 
@@ -13,7 +42,6 @@ FINAL_DIR = os.path.join(STATEMENTS_DIR, "final_statements")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 TXN_METADATA_DIR = os.path.join(DATA_DIR, "txn_metadata")
 EXTRACTION_DIR = os.path.join(STATEMENTS_DIR, "raw_extracted_tables")
-SRC_DIR = os.path.join(BASE_DIR, "src")
 
 # Config Files
 PASS_FILE = os.path.join(CONFIG_DIR, "passwords.txt")
@@ -38,10 +66,6 @@ DUPLICATES_REPORT_CSV = os.path.join(ENRICHED_DIR, "duplicates_report.csv")
 # Data Standard
 STANDARD_COLUMNS = ["Date", "Description", "Debit", "Credit", "Balance", "RefNumber", "Amount", "TxnType"]
 
-# Categorization
-# Removed as it's now handled by rules. json/api based.
-
 # Ensure directories exist
 for d in [CONFIG_DIR, RAW_DIR, ENRICHED_DIR, FINAL_DIR, UPLOAD_DIR, TXN_METADATA_DIR]:
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
+    os.makedirs(d, exist_ok=True)

@@ -266,27 +266,15 @@
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
 
-        let BANK_OPTIONS = [
-            "HDFC", "SBI", "IDFC", "PNB", "KOTAK", "PPBL", "UNITYMOM", "UNITYTAN", "AXIS", "ICICI", "Other"
-        ];
+        // Filled from the server: KNOWN_BANKS in .env plus the bank registry.
+        let BANK_OPTIONS = ["Other"];
 
         async function fetchBanks() {
             try {
-                const res = await fetch('/api/banks');
-                const registry = await res.json();
-                if (registry && registry.length > 0) {
-                    const registryNames = registry.map(b => b.Name).filter(n => n);
-                    // Merge and deduplicate
-                    const combined = [...new Set([...BANK_OPTIONS.filter(o => o !== 'Other'), ...registryNames])];
-                    combined.sort();
-                    combined.push('Other');
-                    BANK_OPTIONS = combined;
-                    console.log("Updated Bank Options from Registry:", BANK_OPTIONS);
-                    // Re-render if we already have files
-                    if (selectedFiles.length > 0) renderFileList();
-                }
+                BANK_OPTIONS = await App.api('/api/bank-options');
+                if (selectedFiles.length > 0) renderFileList();
             } catch (e) {
-                console.warn("Failed to fetch bank registry:", e);
+                console.warn("Failed to load bank options:", e);
             }
         }
 

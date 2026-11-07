@@ -57,7 +57,7 @@ def main():
     banks = {}
     
     # Load from registry
-    known_banks = ["HDFC", "SBI", "IDFC", "PNB", "KOTAK", "PPBL", "UNITYMOM", "UNITYTAN", "AXIS", "ICICI"]
+    known_banks = list(config.KNOWN_BANKS)
     if os.path.exists(config.BANKS_FILE):
         try:
             b_df = pd.read_csv(config.BANKS_FILE)
