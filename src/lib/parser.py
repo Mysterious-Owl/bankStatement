@@ -1,6 +1,9 @@
-import pandas as pd
-import os
+import datetime
 import io
+import os
+import re
+
+import pandas as pd
 import msoffcrypto
 from openpyxl import load_workbook
 import xlrd
@@ -164,53 +167,70 @@ def find_table_start(df):
     new_df.columns = new_header
     return new_df, header_idx
 
+FOOTER_KEYWORDS = [
+    "total", "closing balance", "grand total", "-- end of statement --", "** end of statement **",
+    "statement summary",
+    "unless constituent notifies the bank immediately of any discrepancy found by him in his statement of",
+    "page no -",
+]
+
+# Word-bounded at alphanumeric edges: "total" must not match "TOTALENERGIES"
+# or "UPI/subtotal@ybl" inside a transaction's narration.
+_FOOTER_PATTERNS = [
+    re.compile((r'\b' if k[0].isalnum() else '') + re.escape(k) + (r'\b' if k[-1].isalnum() else ''))
+    for k in FOOTER_KEYWORDS
+]
+
+# A cell that is a date on its own: 05/01/2024, 5-Jan-24, 2024-01-05 [10:30:00].
+_DATE_CELL = re.compile(r'^\s*(\d{1,2}[/\-. ][A-Za-z0-9]{1,9}[/\-. ]\d{2,4}|\d{4}-\d{2}-\d{2})([ T]\d{1,2}:\d{2}(:\d{2})?)?\s*$')
+
+
+def _has_date_cell(cells):
+    return any(isinstance(c, (pd.Timestamp, datetime.date)) or (isinstance(c, str) and _DATE_CELL.match(c))
+               for c in cells)
+
+
+def is_footer_row(cells):
+    """
+    Whether a row (its first few cells) marks the end of the transaction table.
+
+    A row carrying a transaction date is a transaction, so for those only a
+    cell that *starts* with a footer phrase counts ("Closing Balance ..." rows
+    are often dated). Undated rows end the table if a footer phrase appears
+    anywhere in them.
+    """
+    texts = [str(c).strip().lower() for c in cells if pd.notna(c) and str(c).strip()]
+    if not texts:
+        return False
+    if _has_date_cell(cells):
+        # Bare "total" is too common at the start of a narration ("TOTAL
+        # MALL ...") to trust on a dated row unless it's the whole cell.
+        return any(t.rstrip(': ') == "total" for t in texts) or any(
+            p.match(t) for t in texts
+            for k, p in zip(FOOTER_KEYWORDS, _FOOTER_PATTERNS) if k != "total")
+    line = " ".join(texts)
+    return any(p.search(line) for p in _FOOTER_PATTERNS)
+
+
 def find_table_end(df):
     """
-    Heuristic to find the end of the table.
-    Scans from top to bottom. If it hits a row with significant structure change 
-    (e.g., "Total", "Closing Balance" in first col, or many nulls), it cuts off.
+    Cut the table at its footer: a summary/total row (see is_footer_row) or
+    three consecutive blank rows. Isolated blank rows inside or at the end of
+    a statement are not an end -- remove_junk_rows drops them later.
     """
     if df is None or df.empty:
         return df
 
-    # We iterate and check for footer keywords or empty rows
-    # Stop if 3 consecutive rows are mostly empty? 
-    # Or stop at specific keywords?
-    
-    footer_keywords = ["total", "closing balance", "grand total", "-- end of statement --", "** end of statement **", 'statement summary', "Unless constituent notifies the bank immediately of any discrepancy found by him in his statement of", "Page No -"]
-    
-    end_idx = len(df)
-    
-    # We'll just list columns to check (usually first few)
     check_cols = df.columns[:3]
-    
     for i in range(len(df)):
         row = df.iloc[i]
-        
-        # density check
         if row.count() == 0:
-            # If completely empty, maybe end? Banks sometimes have blank lines.
-            # Let's check next 2 lines. If all blank, then end.
-            if i + 2 < len(df):
-                next_1 = df.iloc[i+1].count()
-                next_2 = df.iloc[i+2].count()
-                if next_1 == 0 and next_2 == 0:
-                    end_idx = i
-                    break
-            else:
-                # End of file
-                end_idx = i
-                break
-                
-        # Keyword check
-        # We join the first few cols to string to check for "Total" etc
-        # Using .astype(str) handles non-string data safely
-        line_str = " ".join(row[check_cols].fillna('').astype(str)).lower()
-        if any(k in line_str for k in footer_keywords):
-            end_idx = i
-            break
-            
-    return df.iloc[:end_idx]
+            if i + 2 < len(df) and df.iloc[i + 1].count() == 0 and df.iloc[i + 2].count() == 0:
+                return df.iloc[:i]
+            continue
+        if is_footer_row(list(row[check_cols])):
+            return df.iloc[:i]
+    return df
 
 def remove_junk_rows(df):
     """

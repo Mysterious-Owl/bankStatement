@@ -1,22 +1,299 @@
-import pandas as pd
-import os
-import hashlib
-from lib.parser import get_passwords, try_open_workbook, find_table_start, find_table_end, remove_junk_rows, remove_leading_empty_columns, remove_empty_junk_columns
-import config
+"""
+Raw statements -> one consolidated ledger (mega_statement.csv).
+
+For every raw file: extract the transaction table, map its columns onto the
+standard schema, clean amounts, normalise row order to oldest-first, and tag
+it with its bank. Then concatenate everything, report and drop exact
+duplicates (overlapping statements), and write the ledger.
+"""
 import glob
+import hashlib
+import os
+import re
+
+import pandas as pd
+
+import config
+from lib.parser import (find_table_end, find_table_start, get_passwords,
+                        remove_empty_junk_columns, remove_junk_rows,
+                        remove_leading_empty_columns, try_open_workbook)
+
+STATEMENT_EXTENSIONS = ('.xls', '.xlsx', '.csv')
+MONEY_COLUMNS = ["Debit", "Credit", "Balance"]
+
+# Whole-value transaction types for "Amount + Type" statements, on top of the
+# word-bounded credit/cr/debit/dr match.
+CREDIT_TYPES = {"c", "cr", "cr.", "credit", "deposit"}
+DEBIT_TYPES = {"d", "dr", "dr.", "debit", "withdrawal"}
+
+
+# --------------------------------------------------------------------------
+# Lookups
+# --------------------------------------------------------------------------
 
 def get_file_mapping(mapping_df, filename):
     file_map = mapping_df[mapping_df['FileName'] == filename]
     if file_map.empty:
         return {}
-    
+
     valid_map = file_map.dropna(subset=['MappedTo'])
     valid_map = valid_map[valid_map['MappedTo'] != ""]
     return dict(zip(valid_map['RawColumn'], valid_map['MappedTo']))
 
+
+def load_bank_registry():
+    """Bank name -> {Owner, Tags, ...} from bank_names.csv."""
+    if not os.path.exists(config.BANKS_FILE):
+        return {}
+    try:
+        return pd.read_csv(config.BANKS_FILE).fillna("").set_index('Name').to_dict(orient='index')
+    except Exception:
+        return {}
+
+
+def load_file_to_bank(mapping_df):
+    """
+    Persisted per-file bank assignment (from column_mapping.csv, written during
+    upload). This is the only durable record of the bank for files uploaded
+    under a custom "Other" name that never made it into the registry -- without
+    this fallback, re-running the pipeline (which reprocesses every raw file)
+    would silently reclassify those files as "Unknown".
+    """
+    if 'Bank' not in mapping_df.columns or 'FileName' not in mapping_df.columns:
+        return {}
+    known = mapping_df.dropna(subset=['Bank'])
+    known = known[known['Bank'] != ""]
+    return known.drop_duplicates('FileName').set_index('FileName')['Bank'].to_dict()
+
+
+def resolve_bank(basename, bank_overrides, banks_registry, file_to_bank):
+    """Explicit override > registry name found in the filename > recorded bank."""
+    if bank_overrides and basename in bank_overrides:
+        return bank_overrides[basename]
+    base_upper = basename.upper()
+    for known_name in banks_registry:
+        if str(known_name).upper() in base_upper:
+            return known_name
+    return file_to_bank.get(basename, "Unknown")
+
+
 def generate_txn_id(row):
     s = f"{row.get('Date')}{row.get('Description')}{row.get('Debit')}{row.get('Credit')}{row.get('Balance')}{row.get('RefNumber')}"
     return hashlib.md5(s.encode('utf-8')).hexdigest()
+
+
+# --------------------------------------------------------------------------
+# Cleaning
+# --------------------------------------------------------------------------
+
+def clean_description(parts):
+    """Join the mapped description columns into one single-spaced line."""
+    text = " ".join(parts.fillna('').astype(str))
+    text = text.replace('\n', '').replace('\r', '').replace('\t', ' ')
+    return " ".join(text.split()).strip()
+
+
+def parse_amount(value):
+    """First number in a value, ignoring thousands separators; 0.0 if none."""
+    match = re.search(r'\d+\.?\d*', str(value).replace(',', ''))
+    return float(match.group(0)) if match else 0.0
+
+
+def clean_currency(val, is_balance=False):
+    """
+    Parse an amount cell like "1,234.50 Cr". A "Dr" suffix only flips the sign
+    of a *balance* (an overdrawn account); on a debit column it's just a label.
+    """
+    if pd.isna(val):
+        return 0.0
+    s = str(val).strip().lower()
+    if not s:
+        return 0.0
+
+    sign = -1.0 if (is_balance and 'dr' in s) else 1.0
+    clean_s = s.replace(',', '').replace('cr', '').replace('dr', '').replace(' ', '')
+    match = re.search(r'-?\d+\.?\d*', clean_s)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(0)) * sign
+    except ValueError:
+        return 0.0
+
+
+def is_descending(df):
+    """
+    Whether a statement lists newest rows first.
+
+    Balance arithmetic between the first two rows is decisive (and works for
+    same-day rows, where dates can't tell); the date trend is the fallback.
+    """
+    if len(df) <= 1:
+        return False
+
+    valid_dates = df['Date'].dropna()
+    date_desc = len(valid_dates) > 1 and valid_dates.iloc[0] > valid_dates.iloc[-1]
+
+    try:
+        r0, r1 = df.iloc[0], df.iloc[1]
+        # Ascending: row 0 precedes row 1. Descending: row 1 precedes row 0.
+        diff_asc = abs((r0['Balance'] + r1['Credit'] - r1['Debit']) - r1['Balance'])
+        diff_desc = abs((r1['Balance'] + r0['Credit'] - r0['Debit']) - r0['Balance'])
+        if diff_desc < diff_asc and diff_desc < 1.0:
+            return True
+        # Fall back to the date trend when the ascending math doesn't hold.
+        return bool(date_desc and diff_asc > 1.0)
+    except Exception:
+        return bool(date_desc)
+
+
+# --------------------------------------------------------------------------
+# One file
+# --------------------------------------------------------------------------
+
+def extract_table(path, passwords):
+    """
+    The transaction table from a raw statement, or None if it can't be opened.
+    The extracted table is also saved, so reconciliation can see the file's
+    full original date range later.
+    """
+    df = try_open_workbook(path, passwords)
+    if df is None:
+        return None
+
+    df = remove_leading_empty_columns(df)
+    table, _ = find_table_start(df)
+    table = find_table_end(table)
+    table = remove_junk_rows(table)
+    table = remove_empty_junk_columns(table)
+
+    os.makedirs(config.EXTRACTION_DIR, exist_ok=True)
+    table.to_csv(os.path.join(config.EXTRACTION_DIR, f"{os.path.basename(path)}.csv"), index=False)
+
+    table.columns = [str(c) for c in table.columns]
+    return table
+
+
+def _standard_to_raw(col_map, columns):
+    """{standard field: [raw columns]} for the mapped columns actually present."""
+    std_to_raw = {}
+    for raw, std in col_map.items():
+        if raw in columns:
+            std_to_raw.setdefault(std, []).append(raw)
+    return std_to_raw
+
+
+def _map_dates(table, date_cols, out):
+    """
+    The first mapped date column is authoritative (day-first: Indian banks).
+    Any other mapped date column (value date, say) that disagrees is noted in
+    SystemRemarks rather than dropped.
+    """
+    if not date_cols:
+        out['Date'] = pd.NaT
+        return
+    out['Date'] = pd.to_datetime(table[date_cols[0]], errors='coerce', dayfirst=True)
+    for other in date_cols[1:]:
+        other_dates = pd.to_datetime(table[other], errors='coerce', dayfirst=True)
+        differs = (out['Date'] != other_dates) & out['Date'].notna() & other_dates.notna()
+        if differs.any():
+            note = other + ": " + other_dates[differs].dt.strftime('%Y-%m-%d')
+            out.loc[differs, 'SystemRemarks'] = out.loc[differs, 'SystemRemarks'] + note + "; "
+
+
+def _map_amounts(table, std_to_raw, out):
+    for col in MONEY_COLUMNS + ["RefNumber"]:
+        raw_cols = std_to_raw.get(col, [])
+        if raw_cols:
+            out[col] = table[raw_cols[0]]
+        else:
+            out[col] = 0 if col in MONEY_COLUMNS else ""
+
+    # "Amount + Type" statements: one amount column, direction in another.
+    amt_cols = std_to_raw.get('Amount', [])
+    type_cols = std_to_raw.get('TxnType', [])
+    if amt_cols and type_cols:
+        amounts = table[amt_cols[0]].apply(parse_amount)
+        kind = table[type_cols[0]].astype(str).str.lower()
+        # Word-bounded: a bare contains('c')/('d') used to match almost any
+        # type value ("Card", "Cash", "Chq Deposit") and misclassify rows.
+        whole = kind.str.strip()
+        is_credit = kind.str.contains(r'\b(?:credit|cr)\b', regex=True) | whole.isin(CREDIT_TYPES)
+        is_debit = kind.str.contains(r'\b(?:debit|dr)\b', regex=True) | whole.isin(DEBIT_TYPES)
+        out.loc[is_debit, 'Debit'] = amounts[is_debit]
+        out.loc[is_credit, 'Credit'] = amounts[is_credit]
+
+        # An amount whose direction can't be read would otherwise become a
+        # silent zero; flag it so it shows up for review.
+        unknown = ~(is_credit | is_debit) & (amounts != 0)
+        if unknown.any():
+            raw_type = table[type_cols[0]].astype(str).str.strip()
+            out.loc[unknown, 'SystemRemarks'] = (out.loc[unknown, 'SystemRemarks']
+                                                 + "Unrecognised transaction type '" + raw_type[unknown] + "'; ")
+
+    for col in MONEY_COLUMNS:
+        is_balance = col == "Balance"
+        out[col] = out[col].apply(lambda x: clean_currency(x, is_balance=is_balance))
+
+
+def normalize_statement(table, col_map, basename):
+    """Map one extracted table onto the standard ledger schema."""
+    std_to_raw = _standard_to_raw(col_map, table.columns)
+
+    out = pd.DataFrame(index=table.index)
+    out['SourceFile'] = basename
+    out['SystemRemarks'] = ""
+
+    _map_dates(table, std_to_raw.get('Date', []), out)
+
+    desc_cols = std_to_raw.get('Description', [])
+    out['Description'] = table[desc_cols].apply(clean_description, axis=1) if desc_cols else ""
+
+    _map_amounts(table, std_to_raw, out)
+    out = out[~((out['Debit'] == 0) & (out['Credit'] == 0) & (out['Balance'] == 0))]
+
+    # SortIndex makes every file oldest-first, so same-day rows keep their
+    # true order once statements are merged.
+    n = len(out)
+    out['SortIndex'] = range(n - 1, -1, -1) if is_descending(out) else range(n)
+    out['OriginalIndex'] = out.index
+    return out
+
+
+# --------------------------------------------------------------------------
+# All files
+# --------------------------------------------------------------------------
+
+def _number_repeats(mega_df):
+    """
+    Give genuinely repeated transactions *within one file* distinct IDs.
+
+    Without a running balance (wallet exports) two identical purchases on the
+    same day hash to the same TxnID, and dedup deleted one of them. Numbering
+    the 2nd, 3rd... occurrence per file keeps them, while the same rows coming
+    from an overlapping file still get matching IDs and are deduplicated.
+    The first occurrence keeps its plain ID, so existing IDs don't change.
+    """
+    occurrence = mega_df.groupby(['SourceFile', 'TxnID']).cumcount()
+    return mega_df['TxnID'].where(occurrence == 0, mega_df['TxnID'] + '#' + occurrence.astype(str))
+
+
+def write_duplicate_report(mega_df):
+    """Every TxnID that appears more than once, first copy Kept, rest Deleted."""
+    dupes = mega_df[mega_df.duplicated(subset=['TxnID'], keep=False)]
+    if dupes.empty:
+        return
+
+    report = []
+    for _, group in dupes.groupby('TxnID'):
+        g = group.copy()
+        g['DuplicateStatus'] = 'Deleted'
+        g.iloc[0, g.columns.get_loc('DuplicateStatus')] = 'Kept'
+        cols = ['DuplicateStatus'] + [c for c in g.columns if c != 'DuplicateStatus']
+        report.append(g[cols])
+        report.append(pd.DataFrame([[''] * len(cols)], columns=cols))  # spacer row
+    pd.concat(report, ignore_index=True).to_csv(config.DUPLICATES_REPORT_CSV, index=False)
+
 
 def run_pipeline(custom_files=None, bank_overrides=None):
     if not os.path.exists(config.MAPPING_FILE):
@@ -24,20 +301,9 @@ def run_pipeline(custom_files=None, bank_overrides=None):
 
     mapping_df = pd.read_csv(config.MAPPING_FILE)
     passwords = get_passwords(config.PASS_FILE)
-    
-    # Load Bank Registry for metadata enrichment
-    banks_registry = {}
-    if os.path.exists(config.BANKS_FILE):
-        try:
-            b_df = pd.read_csv(config.BANKS_FILE).fillna("")
-            banks_registry = b_df.set_index('Name').to_dict(orient='index')
-        except:
-            pass
-    
-    all_txns = []
-    
-    files = custom_files if custom_files else glob.glob(os.path.join(config.RAW_DIR, "*"))
-    
+    banks_registry = load_bank_registry()
+    file_to_bank = load_file_to_bank(mapping_df)
+
     summary = {
         "files_processed": 0,
         "files_skipped": 0,
@@ -46,266 +312,57 @@ def run_pipeline(custom_files=None, bank_overrides=None):
         "bank_counts": {}
     }
 
-    for f in files:
-        if not (f.endswith('.xls') or f.endswith('.xlsx') or f.endswith('.csv')):
+    all_txns = []
+    files = custom_files if custom_files else glob.glob(os.path.join(config.RAW_DIR, "*"))
+    for path in files:
+        if not path.endswith(STATEMENT_EXTENSIONS):
             continue
-            
-        basename = os.path.basename(f)
+
+        basename = os.path.basename(path)
         col_map = get_file_mapping(mapping_df, basename)
         if not col_map:
             print(f"No mapping found for {basename}, skipping...")
             summary["files_skipped"] += 1
             continue
-            
+
         print(f"Processing {basename}...")
-        df = try_open_workbook(f, passwords)
-        if df is None:
+        table = extract_table(path, passwords)
+        if table is None:
             print(f"Failed to open {basename}")
             summary["files_skipped"] += 1
             continue
-            
-        # 1. Remove Leading Empty Columns (Indentation)
-        df = remove_leading_empty_columns(df)
-        
-        # 2. Find Table Header/Start
-        cleaned_df, _ = find_table_start(df)
-        
-        # 3. Find Table End/Footer
-        cleaned_df = find_table_end(cleaned_df)
-        
-        # 4. Remove Junk Rows (Separators)
-        cleaned_df = remove_junk_rows(cleaned_df)
-        
-        # 5. Remove Empty Junk Columns (post-cleanup)
-        cleaned_df = remove_empty_junk_columns(cleaned_df)
-        
-        # Save raw extracted table
-        if not os.path.exists(config.EXTRACTION_DIR):
-             os.makedirs(config.EXTRACTION_DIR, exist_ok=True)
-             
-        raw_extracted_path = os.path.join(config.EXTRACTION_DIR, f"{basename}.csv")
-        cleaned_df.to_csv(raw_extracted_path, index=False)
-        
-        # Normalize raw columns to string
-        cleaned_df.columns = [str(c) for c in cleaned_df.columns]
-        
-        # Invert mapping: Standard -> [RawCols]
-        # col_map is {Raw: Std}
-        # We need to be careful: col_map keys match cleaned_df.columns
-        
-        # Filter col_map to only include columns present in cleaned_df
-        present_col_map = {k: v for k, v in col_map.items() if k in cleaned_df.columns}
-        
-        # Group by Standard Column
-        std_to_raw = {}
-        for raw, std in present_col_map.items():
-            std_to_raw.setdefault(std, []).append(raw)
-            
-        # Initialize Final DF
-        final_df = pd.DataFrame(index=cleaned_df.index)
-        final_df['SourceFile'] = basename
-        final_df['SystemRemarks'] = "" # Initialize SystemRemarks
-        
-        # 1. Handle Date
-        # Strategy: Take first as primary. Compare others.
-        date_cols = std_to_raw.get('Date', [])
-        if date_cols:
-            primary_date_col = date_cols[0]
-            # FIX: dayfirst=True for Indian context
-            final_df['Date'] = pd.to_datetime(cleaned_df[primary_date_col], errors='coerce', dayfirst=True)
-            
-            # Compare with others
-            for sec_col in date_cols[1:]:
-                # FIX: dayfirst=True
-                sec_date_series = pd.to_datetime(cleaned_df[sec_col], errors='coerce', dayfirst=True)
-                # Find where they differ (and both are not NaT)
-                mask = (final_df['Date'] != sec_date_series) & (final_df['Date'].notna()) & (sec_date_series.notna())
-                
-                if mask.any():
-                    # Format: "ValDate: 2023-01-01; "
-                    diff_strs = sec_col + ": " + sec_date_series[mask].dt.strftime('%Y-%m-%d')
-                    final_df.loc[mask, 'SystemRemarks'] = final_df.loc[mask, 'SystemRemarks'] + diff_strs + "; "
-        else:
-            final_df['Date'] = pd.NaT
 
-        # 2. Handle Description
-        # Strategy: Concatenate all mapped description columns
-        desc_cols = std_to_raw.get('Description', [])
-        if desc_cols:
-            # Join all mapped columns with space, replace newlines/tabs with space, collapse multi-spaces, and strip
-            def clean_desc(row):
-                text = " ".join(row.fillna('').astype(str))
-                # Replace newlines and tabs with spaces
-                text = text.replace('\n', '').replace('\r', '').replace('\t', ' ')
-                # Collapse multiple spaces and strip
-                return " ".join(text.split()).strip()
-            
-            final_df['Description'] = cleaned_df[desc_cols].apply(clean_desc, axis=1)
-        else:
-            final_df['Description'] = ""
-            
-        # 3. Handle Money and Other Columns (Debit, Credit, Balance, RefNumber)
-        
-        # New: Handle "Amount" + "Type" schema
-        amt_cols = std_to_raw.get('Amount', [])
-        type_cols = std_to_raw.get('TxnType', [])
-        
-        has_split_amt = bool(amt_cols and type_cols)
-        
-        for col in ["Debit", "Credit", "Balance", "RefNumber"]:
-            raw_cols = std_to_raw.get(col, [])
-            if raw_cols:
-                final_df[col] = cleaned_df[raw_cols[0]]
-            else:
-                final_df[col] = 0 if col in ["Debit", "Credit", "Balance"] else ""
+        statement = normalize_statement(table, col_map, basename)
 
-        # If we have Amount + Type, populate Debit/Credit from it overrides
-        if has_split_amt:
-             raw_amt = cleaned_df[amt_cols[0]]
-             raw_type = cleaned_df[type_cols[0]].astype(str).str.lower()
-             
-             # Initialize if not present
-             if 'Debit' not in final_df.columns: final_df['Debit'] = 0
-             if 'Credit' not in final_df.columns: final_df['Credit'] = 0
-             
-             # Convert amount to float first
-             def parse_float(x):
-                 import re
-                 try:
-                     return float(re.search(r'\d+\.?\d*', str(x).replace(',','')).group(0))
-                 except: return 0.0
-             
-             floats = raw_amt.apply(parse_float)
-             
-             # Check for 'debit' or 'dr' in type
-             is_credit = raw_type.str.contains('credit') | raw_type.str.contains('cr') | raw_type.str.contains('c')
-             is_debit = raw_type.str.contains('debit') | raw_type.str.contains('dr') | raw_type.str.contains('d')
-             
-             final_df.loc[is_debit, 'Debit'] = floats[is_debit]
-             final_df.loc[is_credit, 'Credit'] = floats[is_credit]
+        bank_name = resolve_bank(basename, bank_overrides, banks_registry, file_to_bank)
+        meta = banks_registry.get(bank_name, {})
+        statement['Bank'] = bank_name
+        statement['Owner'] = meta.get('Owner', '')
+        statement['Tags'] = meta.get('Tags', '')
 
-        # Clean Data (Handle commas, Cr/Dr suffixes)
-        def clean_currency(val, is_balance=False):
-            if pd.isna(val): return 0.0
-            s = str(val).strip().lower()
-            if not s: return 0.0
-            
-            # Determine sign magnitude
-            sign = 1.0
-            if 'dr' in s:
-                if is_balance: sign = -1.0
-            
-            # Remove alphabets and commas
-            clean_s = s.replace(',', '').replace('cr', '').replace('dr', '').replace(' ', '')
-            
-            import re
-            match = re.search(r'-?\d+\.?\d*', clean_s)
-            if match:
-                try:
-                    return float(match.group(0)) * sign
-                except:
-                    return 0.0
-            return 0.0
-
-        for col in ["Debit", "Credit", "Balance"]:
-            is_bal = (col == "Balance")
-            final_df[col] = final_df[col].apply(lambda x: clean_currency(x, is_balance=is_bal))
-            
-        final_df = final_df[~((final_df['Debit'] == 0) & (final_df['Credit'] == 0) & (final_df['Balance'] == 0))]
-        
-        # --- Handle Intra-Day Sorting (Index Normalization) ---
-        valid_dates = final_df['Date'].dropna()
-        is_descending = False
-        
-        if len(valid_dates) > 1:
-            first_date = valid_dates.iloc[0]
-            last_date = valid_dates.iloc[-1]
-            if first_date > last_date:
-                is_descending = True
-        
-        if is_descending:
-            final_df['SortIndex'] = range(len(final_df)-1, -1, -1)
-        else:
-            final_df['SortIndex'] = range(len(final_df))
-            
-        final_df['OriginalIndex'] = final_df.index # Keep for reference
-        
-        # Bank Name & Metadata
-        bank_name = "Unknown"
-        owner = ""
-        tags = ""
-        
-        # Priority 1: Explicit Override from caller (UI selection)
-        if bank_overrides and basename in bank_overrides:
-            bank_name = bank_overrides[basename]
-        else:
-            # Priority 2: Try to find bank name in filename as fallback
-            base_upper = basename.upper()
-            for known_name in banks_registry.keys():
-                if str(known_name).upper() in base_upper:
-                    bank_name = known_name
-                    break
-            
-        # Enrich with Registry Metadata
-        if bank_name in banks_registry:
-            meta = banks_registry[bank_name]
-            owner = meta.get('Owner', '')
-            tags = meta.get('Tags', '')
-
-        final_df['Bank'] = bank_name
-        final_df['Owner'] = owner
-        final_df['Tags'] = tags
-        
         summary["bank_counts"][bank_name] = summary["bank_counts"].get(bank_name, 0) + 1
         summary["files_processed"] += 1
-        
-        all_txns.append(final_df)
-        
-    if all_txns:
-        mega_df = pd.concat(all_txns, ignore_index=True)
-        summary["total_rows_before_dedup"] = len(mega_df)
-        
-        # Sort by Date, then Normalized SortIndex (Time Order), then Bank
-        mega_df.sort_values(by=['Date', 'SortIndex', 'Bank'], inplace=True)
-        
-        mega_df['TxnID'] = mega_df.apply(generate_txn_id, axis=1)
-        
-        # --- Duplicate Reporting Logic ---
-        dupes_mask = mega_df.duplicated(subset=['TxnID'], keep=False)
-        
-        if dupes_mask.any():
-            dupes_df = mega_df[dupes_mask].copy()
-            report_rows = []
-            grouped = dupes_df.groupby('TxnID')
-            
-            for txn_id, group in grouped:
-                g = group.copy()
-                g['DuplicateStatus'] = 'Deleted'
-                g.iloc[0, g.columns.get_loc('DuplicateStatus')] = 'Kept'
-                
-                cols = ['DuplicateStatus'] + [c for c in g.columns if c != 'DuplicateStatus']
-                g = g[cols]
-                
-                report_rows.append(g)
-                empty_row = pd.DataFrame([[''] * len(cols)], columns=cols)
-                report_rows.append(empty_row)
-            
-            if report_rows:
-                full_report = pd.concat(report_rows, ignore_index=True)
-                full_report.to_csv(config.DUPLICATES_REPORT_CSV, index=False)
-        
-        # Dedup (Maintain original behavior)
-        mega_df.drop_duplicates(subset=['TxnID'], inplace=True)
-        summary["total_rows_after_dedup"] = len(mega_df)
-        
-        if not os.path.exists(config.ENRICHED_DIR): os.makedirs(config.ENRICHED_DIR)
+        all_txns.append(statement)
 
-        mega_df.to_parquet(config.MEGA_STATEMENT_PARQUET)
-        mega_df.to_csv(config.MEGA_STATEMENT_CSV, index=False)
-        return summary
-    else:
+    if not all_txns:
         return {"error": "No transactions processed."}
 
+    mega_df = pd.concat(all_txns, ignore_index=True)
+    summary["total_rows_before_dedup"] = len(mega_df)
+
+    # Date, then each file's normalised order, then bank.
+    mega_df.sort_values(by=['Date', 'SortIndex', 'Bank'], inplace=True)
+    mega_df['TxnID'] = mega_df.apply(generate_txn_id, axis=1)
+    mega_df['TxnID'] = _number_repeats(mega_df)
+
+    write_duplicate_report(mega_df)
+    mega_df.drop_duplicates(subset=['TxnID'], inplace=True)
+    summary["total_rows_after_dedup"] = len(mega_df)
+
+    os.makedirs(config.ENRICHED_DIR, exist_ok=True)
+    mega_df.to_csv(config.MEGA_STATEMENT_CSV, index=False)
+    return summary
+
+
 if __name__ == "__main__":
-    res = run_pipeline()
-    print(res)
+    print(run_pipeline())
