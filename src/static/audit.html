@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
+    <style>
+        .bank-row {
+            display: grid;
+            /* Fixed tracks so the status pills line up from bank to bank --
+               each row is its own grid, so auto widths would differ per row. */
+            grid-template-columns: 9rem 9rem minmax(0, 1fr) 11rem 5rem;
+            align-items: center;
+            gap: 0.75rem 1rem;
+            padding: 0.75rem 0.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .bank-row:last-child { border-bottom: none; }
+
+        @media (max-width: 760px) {
+            .bank-row { grid-template-columns: 1fr auto; }
+            .bank-row .hide-sm { display: none; }
+        }
+
+        .break-list {
+            grid-column: 1 / -1;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+
+        .dup-group {
+            border: 1px solid var(--border-color);
+            border-radius: 0.875rem;
+            padding: 0.875rem 1rem;
+            background: rgba(255, 255, 255, 0.025);
+        }
+
+        .dup-group + .dup-group { margin-top: 0.75rem; }
+
+        tr.is-ignored td { opacity: 0.45; text-decoration: line-through; }
+        tr.is-ignored td:last-child { opacity: 1; text-decoration: none; }
+
+        .event-detail {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            word-break: break-word;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <div class="page-content p-4 md:p-8">
+    <div class="max-w-7xl mx-auto space-y-8">
+
+        <header class="page-hero">
+            <h1>Audit</h1>
+            <p>Can these numbers be trusted? Balance continuity, duplicates, and what you've checked.</p>
+        </header>
+
+        <div class="stat-grid" id="summary">
+            <div class="stat"><div class="stat-label">Balance continuity</div><div class="stat-value" id="sumContinuity">–</div><div class="stat-sub" id="sumContinuitySub"></div></div>
+            <div class="stat"><div class="stat-label">Unexplained by transactions</div><div class="stat-value" id="sumUnexplained">–</div><div class="stat-sub">sum of all balance breaks</div></div>
+            <div class="stat"><div class="stat-label">Possible duplicates</div><div class="stat-value" id="sumDuplicates">–</div><div class="stat-sub" id="sumDuplicatesSub"></div></div>
+            <div class="stat"><div class="stat-label">Reviewed</div><div class="stat-value" id="sumReviewed">–</div><div class="stat-sub" id="sumReviewedSub"></div></div>
+        </div>
+
+        <!-- 1. Balance continuity -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Balance continuity</h2>
+                    <p>
+                        Each bank's running balance is walked day by day. Wherever the recorded transactions
+                        don't explain the change in balance, money moved that this ledger doesn't show &mdash;
+                        usually a missing statement. Unlike date gaps, this says exactly how much.
+                    </p>
+                </div>
+            </div>
+            <div id="balanceList"><div class="empty-state">Loading…</div></div>
+        </section>
+
+        <!-- 3. Near duplicates -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Possible duplicates</h2>
+                    <p>
+                        The same bank, day and amount in two different statement files. Overlapping exports
+                        of one period can format a reference number or description differently, so both copies
+                        survive the import and the transaction is counted twice. Ignore the extra copy, or
+                        mark the group as genuinely separate transactions.
+                    </p>
+                </div>
+            </div>
+            <div id="duplicateList"><div class="empty-state">Loading…</div></div>
+        </section>
+
+        <!-- 2. Review -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Review progress</h2>
+                    <p>Measured in rupees as well as rows &mdash; one unchecked large payment matters more than fifty small ones. Review rows in bulk from the Data Grid's edit view.</p>
+                </div>
+                <a class="btn-small" href="/data?review=unreviewed&view=grid">Open unreviewed in Data Grid</a>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1.5"><span class="muted">By rupees</span><span id="reviewSpendLabel"></span></div>
+                        <div class="meter is-ok"><span id="reviewSpendBar" style="width:0%"></span></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1.5"><span class="muted">By rows</span><span id="reviewRowsLabel"></span></div>
+                        <div class="meter"><span id="reviewRowsBar" style="width:0%"></span></div>
+                    </div>
+                    <div class="report-table-wrap">
+                        <table class="report-table" id="reviewByBank"></table>
+                    </div>
+                </div>
+                <div>
+                    <div class="text-xs muted mb-2">Largest unreviewed transactions</div>
+                    <div class="report-table-wrap">
+                        <table class="report-table" id="largestUnreviewed"></table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Change log -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Change log</h2>
+                    <p>Every edit to tags, remarks, review state, transfers, duplicates and budgets, with what it was before.</p>
+                </div>
+                <select id="eventAction" onchange="loadEvents()" class="h-8 px-3 rounded-lg text-xs">
+                    <option value="">All changes</option>
+                </select>
+            </div>
+            <div class="report-table-wrap">
+                <table class="report-table" id="eventTable"></table>
+            </div>
+            <div class="text-center mt-3">
+                <button class="btn-small" id="moreEvents" onclick="loadEvents(eventLimit + 100)">Show more</button>
+            </div>
+        </section>
+    </div>
+    </div>
+
+    <script>
+        const esc = App.escapeHtml;
+        const { money } = App;
+        let duplicateGroups = [];
+        let unreviewed = [];
+        let eventLimit = 100;
+
+        const ACTION_LABELS = {
+            annotate: 'Edited transaction',
+            bulk_annotate: 'Bulk edit',
+            tags_add: 'Added tags', tags_remove: 'Removed tags', tags_set: 'Set tags',
+            remarks: 'Remark',
+            group_tags: 'Group tag rule',
+            clear_tags: 'Cleared tags',
+            tag_rename: 'Renamed tag', tag_delete: 'Deleted tag',
+            category_tags: 'Category tags',
+            transfer_confirm: 'Confirmed self transfer', transfer_unmark: 'Unmarked self transfer',
+            review: 'Marked reviewed', unreview: 'Unmarked reviewed',
+            ignore: 'Ignored row', unignore: 'Restored row',
+            dismiss_duplicate: 'Not a duplicate',
+            orphan_relink: 'Re-linked annotation', orphan_discard: 'Discarded annotation',
+            budget_create: 'Budget created', budget_update: 'Budget changed', budget_delete: 'Budget deleted'
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const select = document.getElementById('eventAction');
+            Object.entries(ACTION_LABELS).forEach(([value, label]) => {
+                select.insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+            });
+            refreshAll();
+        });
+
+        function refreshAll() {
+            return Promise.all([loadBalance(), loadDuplicates(), loadReview(), loadEvents()]);
+        }
+
+        function failed(id, err) {
+            document.getElementById(id).innerHTML =
+                `<div class="empty-state text-bad">Failed to load: ${esc(err.message)}</div>`;
+        }
+
+        /* --- Balance continuity --------------------------------------- */
+
+        const STATUS_PILL = {
+            continuous: '<span class="pill pill-ok">Continuous</span>',
+            breaks: '<span class="pill pill-bad">Breaks found</span>',
+            no_balance: '<span class="pill pill-mute">No balance data</span>',
+            empty: '<span class="pill pill-mute">Empty</span>'
+        };
+
+        async function loadBalance() {
+            let banks;
+            try { banks = await App.api('/api/audit/balance'); }
+            catch (err) { return failed('balanceList', err); }
+
+            const checkable = banks.filter(b => b.status === 'continuous' || b.status === 'breaks');
+            const continuous = checkable.filter(b => b.status === 'continuous').length;
+            const unexplained = banks.reduce((s, b) => s + (b.unexplained_total || 0), 0);
+            document.getElementById('sumContinuity').textContent = `${continuous}/${checkable.length}`;
+            document.getElementById('sumContinuitySub').textContent =
+                checkable.length === continuous ? 'every checkable bank reconciles' : 'banks reconcile end to end';
+            const unexplainedEl = document.getElementById('sumUnexplained');
+            unexplainedEl.textContent = money(unexplained);
+            unexplainedEl.className = 'stat-value ' + (unexplained > 0 ? 'text-bad' : 'text-ok');
+
+            if (!banks.length) {
+                document.getElementById('balanceList').innerHTML = '<div class="empty-state">No transactions yet.</div>';
+                return;
+            }
+
+            document.getElementById('balanceList').innerHTML = banks.map(bank => {
+                const breaks = bank.breaks || [];
+                const detail = bank.status === 'no_balance'
+                    ? 'This export has no running balance, so it cannot be verified.'
+                    : `${bank.first_date} → ${bank.last_date} · ${bank.days_checked} days checked`;
+                return `
+                    <div class="bank-row">
+                        <div class="font-semibold">${esc(bank.bank)}</div>
+                        <div>${STATUS_PILL[bank.status] || ''}</div>
+                        <div class="text-xs muted hide-sm">${detail}</div>
+                        <div class="text-xs hide-sm ${breaks.length ? 'text-bad' : 'faint'}">
+                            ${breaks.length ? `${breaks.length} break${breaks.length === 1 ? '' : 's'} · ${money(bank.unexplained_total)}` : ''}
+                        </div>
+                        <div class="text-right">
+                            ${breaks.length ? `<button class="btn-small" onclick="this.closest('.bank-row').querySelector('.break-list').classList.toggle('hidden')">Details</button>` : ''}
+                        </div>
+                        ${breaks.length ? `<div class="break-list hidden">${renderBreaks(bank)}</div>` : ''}
+                    </div>`;
+            }).join('');
+        }
+
+        function renderBreaks(bank) {
+            const rows = bank.breaks.map(b => {
+                const where = b.kind === 'seam'
+                    ? `<span class="pill pill-bad">Between statements</span>`
+                    : `<span class="pill pill-warn">Inside a statement</span>`;
+                const meaning = b.unexplained > 0
+                    ? 'balance rose more than recorded &mdash; credits missing'
+                    : 'balance fell more than recorded &mdash; debits missing';
+                const files = b.from_file === b.to_file
+                    ? esc(b.from_file)
+                    : `${esc(b.from_file)} <span class="faint">→</span> ${esc(b.to_file)}`;
+                const link = `/data?bank=${encodeURIComponent(bank.bank)}&start=${b.from_date}&end=${b.to_date}`;
+                return `
+                    <tr>
+                        <td>${where}</td>
+                        <td class="whitespace-nowrap">${b.from_date} → ${b.to_date}<div class="faint text-xs">${b.gap_days} day${b.gap_days === 1 ? '' : 's'}</div></td>
+                        <td class="text-xs">${files}</td>
+                        <td class="num">${money(b.expected_balance)}<div class="faint text-xs">expected</div></td>
+                        <td class="num">${money(b.actual_balance)}<div class="faint text-xs">recorded</div></td>
+                        <td class="num ${b.unexplained > 0 ? 'text-warn' : 'text-bad'}">${b.unexplained > 0 ? '+' : ''}${money(b.unexplained)}<div class="faint text-xs">${meaning}</div></td>
+                        <td><a class="btn-small" href="${link}">View</a></td>
+                    </tr>`;
+            }).join('');
+            return `<div class="report-table-wrap"><table class="report-table">
+                <thead><tr><th>Where</th><th>Dates</th><th>Files</th><th class="num">Expected</th><th class="num">Recorded</th><th class="num">Unexplained</th><th></th></tr></thead>
+                <tbody>${rows}</tbody></table></div>`;
+        }
+
+        /* --- Near duplicates ------------------------------------------ */
+
+        async function loadDuplicates() {
+            try { duplicateGroups = await App.api('/api/audit/duplicates'); }
+            catch (err) { return failed('duplicateList', err); }
+
+            const overstatement = duplicateGroups.reduce((s, g) => s + g.overstatement, 0);
+            const high = duplicateGroups.filter(g => g.confidence === 'high').length;
+            const el = document.getElementById('sumDuplicates');
+            el.textContent = duplicateGroups.length;
+            el.className = 'stat-value ' + (duplicateGroups.length ? 'text-warn' : 'text-ok');
+            document.getElementById('sumDuplicatesSub').textContent = duplicateGroups.length
+                ? `${high} high confidence · up to ${money(overstatement)} double-counted`
+                : 'nothing double-counted';
+
+            const list = document.getElementById('duplicateList');
+            if (!duplicateGroups.length) {
+                list.innerHTML = '<div class="empty-state">No possible duplicates. Every transaction appears once.</div>';
+                return;
+            }
+
+            list.innerHTML = duplicateGroups.map((g, gi) => `
+                <div class="dup-group">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="font-semibold">${esc(g.bank)}</span>
+                        <span class="muted text-sm">${g.date}</span>
+                        <span class="font-semibold tabular-nums ${g.amount < 0 ? 'text-rose-400' : 'text-emerald-400'}">${money(Math.abs(g.amount))} ${g.amount < 0 ? 'debit' : 'credit'}</span>
+                        ${g.confidence === 'high'
+                            ? '<span class="pill pill-bad" title="Copies share the same running balance">High confidence</span>'
+                            : '<span class="pill pill-warn" title="Same day and amount, but balances differ">Possible</span>'}
+                        <span class="text-xs muted">overstates totals by ${money(g.overstatement)}</span>
+                        <button class="btn-small ml-auto" onclick="dismissGroup(${gi})">Not a duplicate</button>
+                    </div>
+                    <div class="report-table-wrap"><table class="report-table">
+                        <thead><tr><th>File</th><th>Description</th><th>Ref</th><th class="num">Balance</th><th></th></tr></thead>
+                        <tbody>
+                            ${g.rows.map((r, ri) => `
+                                <tr class="${r.ignored ? 'is-ignored' : ''}">
+                                    <td class="text-xs whitespace-nowrap">${esc(r.source_file)}</td>
+                                    <td class="text-xs">${esc(r.description)}</td>
+                                    <td class="text-xs mono">${esc(r.ref_number) || '<span class="faint">–</span>'}</td>
+                                    <td class="num text-xs">${r.balance == null ? '–' : money(r.balance)}</td>
+                                    <td class="text-right">
+                                        ${r.ignored
+                                            ? `<button class="btn-small" onclick="setIgnored(${gi}, ${ri}, false)">Restore</button>`
+                                            : `<button class="btn-small" onclick="setIgnored(${gi}, ${ri}, true)">Ignore this copy</button>`}
+                                    </td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table></div>
+                </div>`).join('');
+        }
+
+        async function setIgnored(groupIndex, rowIndex, ignored) {
+            const row = duplicateGroups[groupIndex].rows[rowIndex];
+            try {
+                await App.postJson('/api/audit/ignore', { row_keys: [row.row_key], ignored, reason: 'duplicate' });
+            } catch (err) { return alert('Failed: ' + err.message); }
+            // Ignoring a copy also clears the balance break it caused.
+            await refreshAll();
+        }
+
+        async function dismissGroup(groupIndex) {
+            const g = duplicateGroups[groupIndex];
+            if (!confirm(`Treat these ${g.rows.length} rows on ${g.date} as separate, genuine transactions?`)) return;
+            try {
+                await App.postJson('/api/audit/duplicates/dismiss', { group_id: g.group_id });
+            } catch (err) { return alert('Failed: ' + err.message); }
+            await Promise.all([loadDuplicates(), loadEvents()]);
+        }
+
+        /* --- Review --------------------------------------------------- */
+
+        async function loadReview() {
+            let p;
+            try { p = await App.api('/api/audit/review-progress'); }
+            catch (err) { return failed('largestUnreviewed', err); }
+
+            document.getElementById('sumReviewed').textContent = `${p.pct_spend}%`;
+            document.getElementById('sumReviewedSub').textContent =
+                `of rupees · ${p.rows_reviewed.toLocaleString()} of ${p.rows_total.toLocaleString()} rows`;
+            document.getElementById('reviewSpendBar').style.width = `${p.pct_spend}%`;
+            document.getElementById('reviewRowsBar').style.width = `${p.pct_rows}%`;
+            document.getElementById('reviewSpendLabel').textContent = `${p.pct_spend}% · ${money(p.spend_reviewed)} of ${money(p.spend_total)}`;
+            document.getElementById('reviewRowsLabel').textContent = `${p.pct_rows}% · ${p.rows_reviewed} of ${p.rows_total}`;
+
+            document.getElementById('reviewByBank').innerHTML = `
+                <thead><tr><th>Bank</th><th class="num">Rows</th><th class="num">Rupees</th></tr></thead>
+                <tbody>${p.by_bank.map(b => `
+                    <tr><td>${esc(b.bank)}</td>
+                        <td class="num">${b.rows_reviewed}/${b.rows_total}</td>
+                        <td class="num">${b.pct_spend}%</td></tr>`).join('')}</tbody>`;
+
+            unreviewed = p.largest_unreviewed;
+            document.getElementById('largestUnreviewed').innerHTML = unreviewed.length ? `
+                <thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead>
+                <tbody>${unreviewed.map((t, i) => {
+                    const many = t.count > 1;
+                    return `
+                    <tr>
+                        <td class="whitespace-nowrap text-xs">${many ? `${t.first_date}<div class="faint">to ${t.last_date}</div>` : t.date}<div class="faint">${esc(t.bank)}</div></td>
+                        <td class="text-xs">${esc(t.description)}<div class="faint">${esc(t.category || '')}${many ? ` · <span class="text-slate-300">${t.count} similar, ${money(t.total)} in all</span>` : ''}</div></td>
+                        <td class="num ${t.debit ? 'text-rose-400' : 'text-emerald-400'}">${money(t.debit || t.credit)}${many ? '<div class="faint text-xs">largest</div>' : ''}</td>
+                        <td class="text-right"><button class="btn-small" onclick="markReviewed(${i})">${many ? `Review all ${t.count}` : 'Reviewed'}</button></td>
+                    </tr>`;
+                }).join('')}</tbody>`
+                : '<tbody><tr><td class="empty-state">Everything has been reviewed.</td></tr></tbody>';
+        }
+
+        async function markReviewed(index) {
+            try {
+                await App.postJson('/api/audit/review', { anno_keys: unreviewed[index].keys, reviewed: true });
+            } catch (err) { return alert('Failed: ' + err.message); }
+            await Promise.all([loadReview(), loadEvents()]);
+        }
+
+        /* --- Change log ----------------------------------------------- */
+
+        function tagList(tags) {
+            return (tags || []).length ? tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join(' ') : '<span class="faint">none</span>';
+        }
+
+        function count(list, noun) {
+            const n = (list || []).length;
+            return `${n} ${noun}${n === 1 ? '' : 's'}`;
+        }
+
+        function describeEvent(e) {
+            switch (e.action) {
+                case 'annotate': case 'tags_add': case 'tags_remove': case 'tags_set': case 'remarks':
+                    return Object.entries(e.changes || {}).map(([field, [from, to]]) => {
+                        const show = v => Array.isArray(v) ? tagList(v) : (v === '' || v == null ? '<span class="faint">empty</span>' : esc(String(v)));
+                        return `<div><span class="faint">${esc(field)}:</span> ${show(from)} → ${show(to)}</div>`;
+                    }).join('');
+                case 'bulk_annotate':
+                    return [count(e.keys, 'transaction'),
+                        e.add_tags ? `added ${tagList(e.add_tags)}` : '',
+                        e.remove_tags ? `removed ${tagList(e.remove_tags)}` : '',
+                        e.remarks != null ? `remark “${esc(e.remarks)}”` : ''].filter(Boolean).join(' · ');
+                case 'group_tags':
+                    return `${esc(Object.entries(e.criteria || {}).map(([k, v]) => `${k}: ${v}`).join(', '))}<br>${tagList(e.before)} → ${tagList(e.after)}`;
+                case 'category_tags':
+                    return `${esc(e.category_id)}: ${tagList(e.before)} → ${tagList(e.after)}`;
+                case 'tag_rename':
+                    return `${esc(e.tag)} → ${esc(e.new_name)}${e.merged ? ' (merged)' : ''}`;
+                case 'tag_delete':
+                    return esc(e.tag);
+                case 'review': case 'unreview':
+                    return count(e.keys, 'transaction');
+                case 'ignore': case 'unignore':
+                    return `${count(e.rows, 'row')}${e.reason ? ` · ${esc(e.reason)}` : ''}<div class="faint">${esc((e.rows || []).map(r => r.split('|').slice(1).join('|')).join(', '))}</div>`;
+                case 'transfer_confirm':
+                    return `${money(e.amount)} · pair ${esc(e.pair_id)}`;
+                case 'transfer_unmark': case 'dismiss_duplicate':
+                    return esc(e.pair_id || e.group_id);
+                case 'budget_create': case 'budget_delete':
+                    return `${esc(e.budget.scope)} “${esc(e.budget.target)}” · ${money(e.budget.amount)}/month`;
+                case 'budget_update':
+                    return `${esc(e.budget.scope)} “${esc(e.budget.target)}” · ${money(e.before?.amount)} → ${money(e.budget.amount)}/month`;
+                default:
+                    return esc(JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !['ts', 'action'].includes(k)))));
+            }
+        }
+
+        async function loadEvents(limit = 100) {
+            eventLimit = limit;
+            const action = document.getElementById('eventAction').value;
+            let data;
+            try {
+                data = await App.api(`/api/audit/events?limit=${limit}${action ? `&action=${action}` : ''}`);
+            } catch (err) { return failed('eventTable', err); }
+
+            document.getElementById('moreEvents').classList.toggle('hidden', data.events.length < limit || limit >= 500);
+            document.getElementById('eventTable').innerHTML = data.events.length ? `
+                <thead><tr><th>When</th><th>Change</th><th>Detail</th></tr></thead>
+                <tbody>${data.events.map(e => `
+                    <tr>
+                        <td class="whitespace-nowrap text-xs muted">${esc(e.ts.replace('T', ' '))}</td>
+                        <td class="whitespace-nowrap text-xs font-semibold">${esc(ACTION_LABELS[e.action] || e.action)}</td>
+                        <td class="event-detail">${describeEvent(e)}</td>
+                    </tr>`).join('')}</tbody>`
+                : '<tbody><tr><td class="empty-state">No changes recorded yet.</td></tr></tbody>';
+        }
+    </script>
+</body>
+
+</html>

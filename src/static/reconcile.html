@@ -5,43 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bank Reconciliation Summary</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="/static/common.js"></script>
     <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-deep: #020617;
-            --bg-card: #0f172a;
-            --bg-card-hover: #1e293b;
-            --accent-primary: #3b82f6;
-            --accent-secondary: #8b5cf6;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --border-color: #334155;
-        }
-
-        body {
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-deep);
-            color: var(--text-primary);
-            overflow-x: hidden;
-        }
-
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-color);
-            border-radius: 1rem;
-        }
-
-        .card {
-            background: rgba(15, 23, 42, 0.7);
-            padding: 1.5rem;
-            border-radius: 1rem;
-            border: 1px solid var(--border-color);
-        }
-
         table {
             width: 100%;
             border-collapse: separate;
@@ -49,7 +18,7 @@
         }
 
         th {
-            background: #1e293b;
+            background: #2c2c2e;
             color: var(--text-secondary);
             font-weight: 600;
             text-transform: uppercase;
@@ -62,68 +31,280 @@
 
         td {
             padding: 0.75rem;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            border-bottom: 1px solid rgba(58, 58, 60, 0.5);
             font-size: 0.875rem;
             transition: background 0.2s ease;
         }
 
         tr:hover td {
-            background: rgba(30, 41, 59, 0.5);
+            background: rgba(44, 44, 46, 0.5);
         }
 
-        .gradient-text {
-            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .expand-btn {
+            transition: transform 0.3s ease;
         }
 
-        .mono {
+        .expanded .expand-btn {
+            transform: rotate(90deg);
+        }
+
+        .details-row {
+            display: none;
+            background: rgba(28, 28, 30, 0.4);
+        }
+
+        .details-row.show {
+            display: table-row;
+        }
+
+        .nested-table th {
+            background: #1c1c1e;
+            border-bottom: 2px solid var(--border-color);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.65rem;
+        }
+
+        .nested-table td {
+            background: rgba(44, 44, 46, 0.3);
+            border-bottom: 1px solid rgba(58, 58, 60, 0.3);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        /* --- Badge pills (bank summary row) --- */
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 7px;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .badge-rose {
+            background: rgba(244, 63, 94, 0.15);
+            color: #fb7185;
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .badge-amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-indigo {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .badge-fuchsia {
+            background: rgba(217, 70, 239, 0.15);
+            color: #e879f9;
+            border: 1px solid rgba(217, 70, 239, 0.3);
+        }
+
+        /* --- Timeline: a combined summary row on top, one lane per file below --- */
+        .timeline-block {
+            margin-bottom: 0.75rem;
+        }
+
+        .timeline-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timeline-row + .timeline-row {
+            margin-top: 4px;
+        }
+
+        .timeline-row-label {
+            width: 160px;
+            flex-shrink: 0;
+            font-size: 0.65rem;
             font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .timeline-row-label.is-combined {
+            font-family: inherit;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            font-size: 0.6rem;
+            letter-spacing: 0.06em;
+        }
+
+        .timeline-track {
+            position: relative;
+            flex: 1;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .timeline-track.is-combined {
+            height: 24px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .timeline-lanes {
+            display: flex;
+            flex-direction: column;
+            margin-top: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .timeline-dates-row .timeline-track {
+            background: none;
+            border: none;
+            height: auto;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.6rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-tertiary);
+        }
+
+        .timeline-bar {
+            position: absolute;
+            height: 100%;
+            top: 0;
+            border-radius: 3px;
+            opacity: 0.85;
+            transition: opacity 0.2s;
+            z-index: 2;
+        }
+
+        .timeline-bar:hover {
+            opacity: 1;
+        }
+
+        /* Candlestick "wick": the file's TRUE original date range, read
+           straight from its raw extracted sheet -- shown thin and dim behind
+           the bold "kept" bar so a heavily-deduplicated file (e.g. 89 raw
+           rows but only 1 survived) doesn't visually collapse to a single
+           point and look shorter-lived than it really was. */
+        .timeline-bar-raw {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 4px;
+            border-radius: 2px;
+            opacity: 0.4;
+            z-index: 1;
+        }
+
+        /* Two+ statements physically overlap in time -- likely duplicate data */
+        .timeline-overlap {
+            position: absolute;
+            height: 100%;
+            top: 0;
+            z-index: 5;
+            background: repeating-linear-gradient(45deg,
+                    rgba(244, 63, 94, 0.5),
+                    rgba(244, 63, 94, 0.5) 8px,
+                    rgba(244, 63, 94, 0.7) 8px,
+                    rgba(244, 63, 94, 0.7) 16px);
+        }
+
+        /* No statement at all covers this stretch -- a genuine documentation hole */
+        .timeline-gap {
+            position: absolute;
+            height: 100%;
+            top: 0;
+            z-index: 4;
+            background: repeating-linear-gradient(135deg,
+                    rgba(245, 158, 11, 0.45),
+                    rgba(245, 158, 11, 0.45) 6px,
+                    rgba(245, 158, 11, 0.65) 6px,
+                    rgba(245, 158, 11, 0.65) 12px);
+            border-left: 1px solid rgba(251, 191, 36, 0.7);
+            border-right: 1px solid rgba(251, 191, 36, 0.7);
+        }
+
+        /* Inside a single file's own range, but no transactions here -- just
+           quiet, not missing (the file itself proves this period is documented) */
+        .timeline-quiet {
+            position: absolute;
+            height: 100%;
+            top: 0;
+            z-index: 6;
+            background: repeating-linear-gradient(135deg,
+                    rgba(0, 0, 0, 0.65),
+                    rgba(0, 0, 0, 0.65) 4px,
+                    rgba(0, 0, 0, 0.1) 4px,
+                    rgba(0, 0, 0, 0.1) 8px);
+        }
+
+        .legend-swatch {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            vertical-align: middle;
+            flex-shrink: 0;
         }
     </style>
 </head>
 
-<body class="p-6">
+<body class="min-h-screen">
 
+
+    <div class="page-content p-4 md:p-8">
     <div class="max-w-7xl mx-auto space-y-8">
         <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <header class="page-hero flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <div>
-                <h1 class="text-4xl font-bold tracking-tight gradient-text">Reconciliation summary</h1>
-                <p class="text-slate-400 mt-1 font-light">Audit institution health and statement freshness</p>
+                <h1>Reconciliation Summary</h1>
+                <p>Audit institution health and statement freshness</p>
             </div>
-            <nav class="flex items-center gap-3">
-                <a href="/"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Dashboard</span>
-                </a>
-                <a href="/data"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Data Grid</span>
-                </a>
-                <a href="/rules"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Rules</span>
-                </a>
-                <a href="/upload"
-                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                    Upload Statements
-                </a>
-            </nav>
         </header>
+
+        <!-- Legend -->
+        <div class="glass-panel p-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-400">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Timeline key</span>
+            <span class="flex items-center gap-2"><span class="legend-swatch" style="background:var(--accent-primary);opacity:.6"></span> Combined row: any statement covers this date</span>
+            <span class="flex items-center gap-2"><span class="legend-swatch" style="background:#0a84ff"></span> Each file gets its own row, in its own color</span>
+            <span class="flex items-center gap-2"><span class="legend-swatch"
+                    style="background:repeating-linear-gradient(45deg,rgba(244,63,94,.5) 0 4px,rgba(244,63,94,.7) 4px 8px)"></span>
+                Combined row: 2+ statements overlap (possible duplicates)</span>
+            <span class="flex items-center gap-2"><span class="legend-swatch"
+                    style="background:repeating-linear-gradient(135deg,rgba(245,158,11,.5) 0 3px,rgba(245,158,11,.7) 3px 6px)"></span>
+                Combined row: missing coverage (no statement at all)</span>
+            <span class="flex items-center gap-2"><span class="legend-swatch"
+                    style="background:repeating-linear-gradient(135deg,rgba(0,0,0,.7) 0 2px,rgba(0,0,0,.1) 2px 4px);border:1px solid #3a3a3c"></span>
+                File row: quiet period (covered, just no activity)</span>
+            <span class="flex items-center gap-2">
+                <span class="inline-block w-3.5 h-1 rounded-full" style="background:#0a84ff;opacity:.4"></span>
+                File row: thin line = original sheet's full date range; bold block = what survived into the ledger</span>
+        </div>
 
         <div class="glass-panel overflow-hidden">
             <table class="min-w-full text-sm">
                 <thead>
                     <tr>
-                        <th class="font-semibold text-gray-300">Bank</th>
-                        <th class="font-semibold text-gray-300 text-right">Statements</th>
-                        <th class="font-semibold text-gray-300 text-right">Transactions</th>
-                        <th class="font-semibold text-gray-300">Date Range</th>
-                        <th class="font-semibold text-gray-300 text-right">Days Since Update</th>
-                        <th class="font-semibold text-gray-300 text-right">Total Credit</th>
-                        <th class="font-semibold text-gray-300 text-right">Total Debit</th>
+                        <th class="w-8"></th>
+                        <th>Bank</th>
+                        <th class="text-right">Statements</th>
+                        <th class="text-right">Transactions</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th class="text-right">Days Since Update</th>
+                        <th class="text-right">Total Credit</th>
+                        <th class="text-right">Total Debit</th>
                     </tr>
                 </thead>
                 <tbody id="reconBody">
@@ -132,97 +313,506 @@
             </table>
         </div>
     </div>
+    </div>
 
     <script>
-        const currencyFormatter = new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0
-        });
+        const currencyFormatter = App.currency;
 
         document.addEventListener('DOMContentLoaded', () => {
-            fetch('/data.csv')
-                .then(r => r.text())
-                .then(csvText => {
-                    Papa.parse(csvText, {
-                        header: true,
-                        dynamicTyping: true,
-                        skipEmptyLines: true,
-                        complete: function (results) {
-                            processRecon(results.data);
-                        }
-                    });
+            fetch('/api/reconcile/summary')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('reconBody').innerHTML =
+                            `<tr><td colspan="9" class="text-center py-16 text-slate-500 italic">${data.error}</td></tr>`;
+                        return;
+                    }
+                    processRecon(data.bank_level);
                 });
         });
 
-        function processRecon(data) {
-            const banks = {};
+        function toggleDetails(bankId) {
+            const row = document.getElementById(`details-${bankId}`);
+            const masterRow = document.getElementById(`master-${bankId}`);
+            if (row) {
+                row.classList.toggle('show');
+                masterRow.classList.toggle('expanded');
+            }
+        }
+
+        function buildBadges(info) {
+            const badges = [];
+            const redundantCount = (info.RedundantFiles || []).length;
+            const gapCount = (info.CoverageGaps || []).length;
+            const longCount = (info.Files || []).filter(f => f.is_long_statement).length;
+            const overlapCount = (info.Files || []).filter(f => f.duplicate_partners && f.duplicate_partners.length > 0).length;
+
+            if (redundantCount > 0) {
+                badges.push(`<span class="badge-pill badge-rose" title="Fully duplicated files that can be deleted">🗑 ${redundantCount}</span>`);
+            }
+            if (overlapCount > 0) {
+                badges.push(`<span class="badge-pill badge-fuchsia" title="Files that partially overlap another statement -- needs manual review">⧉ ${overlapCount}</span>`);
+            }
+            if (gapCount > 0) {
+                badges.push(`<span class="badge-pill badge-amber" title="Date ranges with no statement covering them at all">⚠ ${gapCount}</span>`);
+            }
+            if (longCount > 0) {
+                badges.push(`<span class="badge-pill badge-indigo" title="Statements spanning more than a financial year">📏 ${longCount}</span>`);
+            }
+            return badges.join(' ');
+        }
+
+        function processRecon(bankStats) {
             const now = new Date();
-
-            data.forEach(row => {
-                const bank = row.Bank || 'Unknown';
-                if (!banks[bank]) {
-                    banks[bank] = {
-                        count: 0,
-                        files: new Set(),
-                        dates: [],
-                        credit: 0,
-                        debit: 0
-                    };
-                }
-
-                banks[bank].count++;
-                if (row.SourceFile) banks[bank].files.add(row.SourceFile);
-                if (row.Date) banks[bank].dates.push(row.Date);
-
-                banks[bank].credit += parseFloat(String(row.Credit || 0).replace(/,/g, ''));
-                banks[bank].debit += parseFloat(String(row.Debit || 0).replace(/,/g, ''));
-            });
-
             const tbody = document.getElementById('reconBody');
+            tbody.innerHTML = '';
 
-            // Convert to array for sorting
-            const bankStats = Object.keys(banks).map(bankName => {
-                const info = banks[bankName];
-                info.dates.sort();
-                const minDate = info.dates.length ? info.dates[0] : '-';
-                const maxDate = info.dates.length ? info.dates[info.dates.length - 1] : '-';
+            if (!bankStats || bankStats.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center py-16 text-slate-500 italic">No banks found in the ledger yet.</td></tr>`;
+                return;
+            }
 
+            // Sort: most old (largest daysAgo) to most recent
+            bankStats.forEach(info => {
                 let daysAgo = -1;
-                if (maxDate !== '-') {
-                    const lastDate = new Date(maxDate);
+                if (info.EndDate !== '-') {
+                    const lastDate = new Date(info.EndDate);
                     const diffTime = Math.abs(now - lastDate);
                     daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                 }
-
-                return {
-                    name: bankName,
-                    ...info,
-                    minDate,
-                    maxDate,
-                    daysAgo
-                };
+                info.daysAgo = daysAgo;
             });
 
-            // Sort: most old (largest daysAgo) to most recent
             bankStats.sort((a, b) => b.daysAgo - a.daysAgo);
 
-            bankStats.forEach(info => {
-                const tr = document.createElement('tr');
+            bankStats.forEach((info, idx) => {
+                const bankId = `bank-${idx}`;
                 const daysStr = info.daysAgo === -1 ? '-' : `${info.daysAgo} days ago`;
-                const daysColor = info.daysAgo > 30 ? 'text-red-400' : (info.daysAgo > 7 ? 'text-yellow-400' : 'text-gray-300');
+                const daysColor = info.daysAgo > 30 ? 'text-rose-400' : (info.daysAgo > 7 ? 'text-amber-400' : 'text-slate-300');
+                // "Inconsistent" is a real problem; "N/A" (e.g. a bank with zero
+                // surviving rows) is neither consistent nor inconsistent -- don't
+                // flag it as a math mismatch.
+                const isInconsistent = (info.Consistency || '').includes('Inconsistent');
+                const isConsistent = (info.Consistency || '').includes('Consistent') && !isInconsistent;
+
+                const tr = document.createElement('tr');
+                tr.id = `master-${bankId}`;
+                tr.className = "cursor-pointer transition-colors";
+                tr.onclick = () => toggleDetails(bankId);
 
                 tr.innerHTML = `
-                    <td class="font-medium text-white">${info.name}</td>
-                    <td class="text-right text-gray-300">${info.files.size}</td>
-                    <td class="text-right text-gray-300">${info.count.toLocaleString()}</td>
-                    <td class="text-gray-400 font-mono text-xs">${info.minDate} to ${info.maxDate}</td>
+                    <td class="text-center">
+                        <svg class="expand-btn w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </td>
+                    <td class="font-medium text-white">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span>${info.Name.replace('All ', '').replace(' (Aggregate)', '')}</span>
+                            ${buildBadges(info)}
+                            ${isInconsistent ? '<span class="badge-pill badge-rose" title="Balance math does not reconcile">✕ math</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="text-right text-slate-300">${info.FileCount}</td>
+                    <td class="text-right text-slate-300">${info.TotalTransactions.toLocaleString()}</td>
+                    <td class="text-slate-400 font-mono text-xs">${info.StartDate}</td>
+                    <td class="text-slate-400 font-mono text-xs">${info.EndDate}</td>
                     <td class="text-right ${daysColor}">${daysStr}</td>
-                    <td class="text-right text-green-400">${currencyFormatter.format(info.credit)}</td>
-                    <td class="text-right text-red-400">${currencyFormatter.format(info.debit)}</td>
+                    <td class="text-right text-emerald-400">${currencyFormatter.format(info.TotalCredit)}</td>
+                    <td class="text-right text-rose-400">${currencyFormatter.format(info.TotalDebit)}</td>
                 `;
                 tbody.appendChild(tr);
+
+                // Construct Details Row
+                const detailsTr = document.createElement('tr');
+                detailsTr.id = `details-${bankId}`;
+                detailsTr.className = "details-row";
+
+                const filesHtml = (info.Files || []).length === 0
+                    ? `<tr><td colspan="7" class="text-center py-6 text-slate-600 italic">No surviving transactions for this bank -- every uploaded file was fully duplicated elsewhere (see below).</td></tr>`
+                    : info.Files.map(f => {
+                        const notes = [];
+                        if (f.raw_start_date && f.raw_end_date && (f.raw_start_date !== f.start_date || f.raw_end_date !== f.end_date)) {
+                            notes.push(`<span class="text-amber-400" title="The original sheet spans this range, but most rows were exact duplicates already kept from another file -- see the thin line on the timeline below">📄 sheet spans ${f.raw_start_date} → ${f.raw_end_date}</span>`);
+                        }
+                        if (f.is_long_statement) {
+                            notes.push(`<span class="text-indigo-400 font-bold" title="Spans more than a financial year">▲ ${f.span_days}d span</span>`);
+                        }
+                        if (f.duplicate_partners && f.duplicate_partners.length > 0) {
+                            const partners = f.duplicate_partners.map(p => `${p.filename} (${p.count})`).join(', ');
+                            notes.push(`<span class="text-rose-400" title="Shares duplicate transactions with these files">⧉ dup w/ ${partners}</span>`);
+                        }
+                        if (f.quiet_periods && f.quiet_periods.length > 0) {
+                            const totalQuietDays = f.quiet_periods.reduce((a, q) => a + q.days, 0);
+                            notes.push(`<span class="text-slate-500" title="Stretches with no transactions inside this file's own range -- not missing data, just no activity">💤 ${f.quiet_periods.length} quiet (${totalQuietDays}d)</span>`);
+                        }
+                        return `
+                    <tr>
+                        <td class="text-slate-300 font-medium">${App.escapeHtml(f.filename)}</td>
+                        <td class="text-right text-slate-400">${f.raw_count}</td>
+                        <td class="text-right text-blue-400 font-bold">${f.final_count}</td>
+                        <td class="text-right ${f.duplicates > 0 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${f.duplicates}</td>
+                        <td class="text-slate-500 font-mono text-[10px]">${f.start_date}</td>
+                        <td class="text-slate-500 font-mono text-[10px]">${f.end_date}</td>
+                        <td class="text-[10px] space-x-2">${notes.join(' ') || '<span class="text-slate-700">—</span>'}</td>
+                    </tr>
+                `;
+                    }).join('');
+
+                const timelineHtml = (info.Files || []).length === 0
+                    ? `<div class="text-xs text-slate-600 italic p-4 border border-dashed border-slate-800 rounded-lg">No timeline available -- this bank has no surviving transactions.</div>`
+                    : `<div class="timeline-block">
+                        <div class="timeline-row">
+                            <span class="timeline-row-label is-combined">Combined</span>
+                            <div class="timeline-track is-combined" id="timeline-combined-${bankId}"></div>
+                        </div>
+                        <div class="timeline-lanes" id="timeline-lanes-${bankId}"></div>
+                        <div class="timeline-row timeline-dates-row">
+                            <span class="timeline-row-label"></span>
+                            <div class="timeline-track">
+                                <span id="timeline-scale-start-${bankId}">${info.StartDate}</span>
+                                <span id="timeline-scale-end-${bankId}">${info.EndDate}</span>
+                            </div>
+                        </div>
+                    </div>`;
+
+                detailsTr.innerHTML = `
+                    <td colspan="9" class="p-0 border-none">
+                        <div class="px-12 py-6 bg-slate-900/30">
+                            ${renderActionItems(info)}
+
+                            <div class="mb-4">
+                                <span class="text-sm font-semibold text-slate-300">File Timeline & Coverage</span>
+                                ${timelineHtml}
+                            </div>
+                            <table class="nested-table min-w-full rounded-lg overflow-hidden">
+                                <thead>
+                                    <tr>
+                                        <th>Source File</th>
+                                        <th class="text-right">Total Raw Records</th>
+                                        <th class="text-right">Final (Kept)</th>
+                                        <th class="text-right">Duplicates (Excluded)</th>
+                                        <th>Start Date</th>
+                                        <th>End Date</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${filesHtml}
+                                </tbody>
+                            </table>
+                            <div class="mt-3 text-xs text-slate-500 flex justify-between px-2">
+                                <span>Consistency Audit: <span class="${isInconsistent ? 'text-rose-400' : (isConsistent ? 'text-emerald-400' : 'text-slate-500')}">${info.Consistency}</span></span>
+                                <span>Overlap Detection: <span id="overlap-status-${bankId}" class="text-slate-300">${(info.Files || []).length === 0 ? 'N/A' : 'Calculating...'}</span></span>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(detailsTr);
+                renderTimeline(bankId, info);
             });
+        }
+
+        function renderActionItems(info) {
+            const items = [];
+            const redundant = info.RedundantFiles || [];
+            const gaps = [...(info.CoverageGaps || [])].sort((a, b) => b.days - a.days);
+            const longFiles = (info.Files || []).filter(f => f.is_long_statement);
+            const partialOverlapFiles = (info.Files || []).filter(f => f.duplicate_partners && f.duplicate_partners.length > 0);
+            const quietTotal = (info.Files || []).reduce((sum, f) => sum + (f.quiet_periods || []).length, 0);
+
+            if (redundant.length > 0) {
+                items.push(`
+                    <div class="p-4 rounded-xl border border-rose-500/20 bg-rose-500/5">
+                        <div class="flex items-center gap-2 mb-3 text-rose-400 font-bold text-xs uppercase tracking-widest">
+                            🗑 Safe to delete (${redundant.length})
+                        </div>
+                        <div class="space-y-2">
+                            ${redundant.map(rf => `
+                                <div class="text-xs text-slate-300 flex flex-col gap-0.5 bg-slate-950/40 rounded-lg px-3 py-2">
+                                    <span class="font-mono truncate">${rf.filename}</span>
+                                    <span class="text-slate-500">${rf.duplicate_rows} txn${rf.duplicate_rows === 1 ? '' : 's'} already present in ${(rf.duplicate_of || []).map(d => d.filename).join(', ') || 'another file'}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-3">Every transaction in these files is an exact duplicate already kept from another statement. They contribute nothing new -- delete them from raw_statements to shrink the pile.</p>
+                    </div>
+                `);
+            }
+
+            if (partialOverlapFiles.length > 0) {
+                items.push(`
+                    <div class="p-4 rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5">
+                        <div class="flex items-center gap-2 mb-3 text-fuchsia-400 font-bold text-xs uppercase tracking-widest">
+                            ⧉ Partial overlap -- needs review (${partialOverlapFiles.length})
+                        </div>
+                        <div class="space-y-2">
+                            ${partialOverlapFiles.map(f => {
+                                const dupTotal = f.duplicate_partners.reduce((s, p) => s + p.count, 0);
+                                const partners = f.duplicate_partners.map(p => p.filename).join(', ');
+                                return `
+                                <div class="text-xs text-slate-300 flex flex-col gap-0.5 bg-slate-950/40 rounded-lg px-3 py-2">
+                                    <span class="font-mono truncate">${App.escapeHtml(f.filename)}</span>
+                                    <span class="text-slate-500">shares ${dupTotal} duplicate txn${dupTotal === 1 ? '' : 's'} with ${partners} -- but still kept ${f.final_count} unique row${f.final_count === 1 ? '' : 's'} of its own</span>
+                                </div>
+                            `;
+                            }).join('')}
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-3">These files physically overlap with another statement but also contain unique data -- not safe to auto-delete. Check the highlighted region on the timeline below and decide manually.</p>
+                    </div>
+                `);
+            }
+
+            if (gaps.length > 0) {
+                items.push(`
+                    <div class="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                        <div class="flex items-center gap-2 mb-3 text-amber-400 font-bold text-xs uppercase tracking-widest">
+                            ⚠ Missing statement coverage (${gaps.length})
+                        </div>
+                        <div class="space-y-2">
+                            ${gaps.map(g => `
+                                <div class="text-xs text-slate-300 flex justify-between items-center gap-4 bg-slate-950/40 rounded-lg px-3 py-2">
+                                    <span>${g.start} &rarr; ${g.end}</span>
+                                    <span class="text-amber-400 font-bold shrink-0">${g.days} day${g.days === 1 ? '' : 's'}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-3">No statement at all covers these dates -- go find and upload the missing statement(s) to close the gap.</p>
+                    </div>
+                `);
+            }
+
+            if (longFiles.length > 0) {
+                items.push(`
+                    <div class="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+                        <div class="flex items-center gap-2 mb-3 text-indigo-400 font-bold text-xs uppercase tracking-widest">
+                            📏 Unusually long statements (${longFiles.length})
+                        </div>
+                        <div class="space-y-2">
+                            ${longFiles.map(f => `
+                                <div class="text-xs text-slate-300 flex flex-col gap-0.5 bg-slate-950/40 rounded-lg px-3 py-2">
+                                    <span class="font-mono truncate">${App.escapeHtml(f.filename)}</span>
+                                    <span class="text-indigo-400 font-bold">${f.span_days} days (${f.start_date} &rarr; ${f.end_date})</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-3">A single statement shouldn't normally span more than one financial year -- double-check this isn't several periods concatenated together or a date-parsing mistake.</p>
+                    </div>
+                `);
+            }
+
+            let html = '';
+            if (items.length > 0) {
+                html += `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">${items.join('')}</div>`;
+            } else {
+                html += `<div class="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-bold flex items-center gap-2 mb-4">✓ No coverage, overlap, or redundancy issues detected for this bank</div>`;
+            }
+
+            if (quietTotal > 0) {
+                html += `<div class="text-[10px] text-slate-600 flex items-center gap-1.5 mb-4">💤 ${quietTotal} quiet period${quietTotal === 1 ? '' : 's'} detected inside existing statements (no activity, but still documented -- shown as dark hatching on the timeline below, not counted as missing).</div>`;
+            }
+
+            return html;
+        }
+
+        // Stable, distinct color per filename (same file always gets the same color)
+        const LANE_COLORS = ['#0a84ff', '#bf5af2', '#34c759', '#ff9f0a', '#ff375f', '#64d2ff', '#ffd60a'];
+        function colorForFile(filename) {
+            let hash = 0;
+            for (const c of filename) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
+            return LANE_COLORS[Math.abs(hash) % LANE_COLORS.length];
+        }
+
+        function renderTimeline(bankId, bankInfo) {
+            const combinedTrack = document.getElementById(`timeline-combined-${bankId}`);
+            const lanesContainer = document.getElementById(`timeline-lanes-${bankId}`);
+            if (!combinedTrack || !lanesContainer) return;
+
+            if (!bankInfo.StartDate || bankInfo.StartDate === '-') return;
+
+            const bankStart = new Date(bankInfo.StartDate).getTime();
+            const bankEnd = new Date(bankInfo.EndDate).getTime();
+            if (isNaN(bankStart) || isNaN(bankEnd)) return;
+
+            // Widen the rendered scale to also fit each file's TRUE raw range
+            // (read from its original sheet, before dedup) -- otherwise a
+            // file's raw wick could start earlier or end later than anything
+            // in the kept ledger and get clipped off the edge of the timeline.
+            let timelineStart = bankStart;
+            let timelineEnd = bankEnd;
+            bankInfo.Files.forEach(file => {
+                if (file.raw_start_date) timelineStart = Math.min(timelineStart, new Date(file.raw_start_date).getTime());
+                if (file.raw_end_date) timelineEnd = Math.max(timelineEnd, new Date(file.raw_end_date).getTime());
+            });
+            const timelineDuration = timelineEnd - timelineStart;
+            if (isNaN(timelineDuration) || timelineDuration <= 0) return;
+
+            const pct = (time) => ((time - timelineStart) / timelineDuration) * 100;
+
+            const scaleStartLabel = document.getElementById(`timeline-scale-start-${bankId}`);
+            const scaleEndLabel = document.getElementById(`timeline-scale-end-${bankId}`);
+            if (scaleStartLabel) scaleStartLabel.textContent = new Date(timelineStart).toISOString().slice(0, 10);
+            if (scaleEndLabel) scaleEndLabel.textContent = new Date(timelineEnd).toISOString().slice(0, 10);
+
+            // --- One lane per file: no more overlapping colors mixing together,
+            // each file gets its own row so overlaps are just two bars lining up
+            // vertically instead of a blended hash pattern. ---
+            lanesContainer.innerHTML = '';
+            bankInfo.Files.forEach(file => {
+                const fs = new Date(file.start_date).getTime();
+                const fe = new Date(file.end_date).getTime() + 86400000; // include full end day
+                const left = pct(fs);
+                const width = pct(fe) - left;
+                const fileColor = colorForFile(file.filename);
+
+                const row = document.createElement('div');
+                row.className = 'timeline-row';
+
+                const label = document.createElement('span');
+                label.className = 'timeline-row-label';
+                label.textContent = file.filename;
+                label.title = file.filename;
+                row.appendChild(label);
+
+                const track = document.createElement('div');
+                track.className = 'timeline-track';
+
+                // Candlestick "wick": the file's true original date range
+                // (from the raw extracted sheet), drawn thin and dim behind
+                // the bold "kept" bar. A file that lost most of its rows to
+                // dedup (e.g. 89 raw rows -> 1 kept) still shows its real
+                // span here instead of collapsing to a single point.
+                const hasRawRange = file.raw_start_date && file.raw_end_date;
+                const rawDiffersFromKept = hasRawRange && (file.raw_start_date !== file.start_date || file.raw_end_date !== file.end_date);
+                if (hasRawRange) {
+                    const rs = new Date(file.raw_start_date).getTime();
+                    const re = new Date(file.raw_end_date).getTime() + 86400000;
+                    const rLeft = pct(rs);
+                    const rWidth = pct(re) - rLeft;
+
+                    const rawBar = document.createElement('div');
+                    rawBar.className = 'timeline-bar-raw';
+                    rawBar.style.left = `${rLeft}%`;
+                    rawBar.style.width = `${Math.max(rWidth, 0.3)}%`;
+                    rawBar.style.backgroundColor = fileColor;
+                    rawBar.title = rawDiffersFromKept
+                        ? `${file.filename} -- original sheet range: ${file.raw_start_date} → ${file.raw_end_date} (${file.raw_count} raw rows)\nOnly ${file.start_date} → ${file.end_date} (${file.final_count} row${file.final_count === 1 ? '' : 's'}) survived into the ledger -- the rest matched duplicates kept from another file`
+                        : `${file.filename}: raw sheet range matches what's kept in the ledger`;
+                    track.appendChild(rawBar);
+                }
+
+                const bar = document.createElement('div');
+                bar.className = 'timeline-bar';
+                bar.style.left = `${left}%`;
+                bar.style.width = `${Math.max(width, 0.3)}%`;
+                bar.style.backgroundColor = fileColor;
+                bar.title = `${file.filename}\nKept in ledger: ${file.start_date} → ${file.end_date} (${file.span_days} days)${file.is_long_statement ? '\n⚠ Unusually long for a single statement' : ''}${rawDiffersFromKept ? `\n(original sheet spanned ${file.raw_start_date} → ${file.raw_end_date} -- see thin line)` : ''}`;
+                track.appendChild(bar);
+
+                // Quiet periods are scoped to this file's own lane only -- a quiet
+                // stretch in one file never gets confused with another file's data.
+                (file.quiet_periods || []).forEach(qp => {
+                    const qs = new Date(qp.start).getTime();
+                    const qe = new Date(qp.end).getTime() + 86400000;
+                    const qLeft = pct(qs);
+                    const qWidth = pct(qe) - qLeft;
+
+                    const quietDiv = document.createElement('div');
+                    quietDiv.className = 'timeline-quiet';
+                    quietDiv.style.left = `${qLeft}%`;
+                    quietDiv.style.width = `${Math.max(qWidth, 0.2)}%`;
+                    quietDiv.title = `Quiet period: ${qp.start} → ${qp.end} (${qp.days} days)\nNo transactions, but this file already covers the range -- not missing data`;
+                    track.appendChild(quietDiv);
+                });
+
+                row.appendChild(track);
+                lanesContainer.appendChild(row);
+            });
+
+            // --- Combined row: the "at a glance" merged view -- solid where any
+            // file covers, amber hash where nothing covers, rose hash where 2+
+            // files overlap. This is the single line that used to carry every
+            // file's color at once; now it just shows the union. ---
+            combinedTrack.innerHTML = '';
+
+            const gaps = [...(bankInfo.CoverageGaps || [])].sort((a, b) => new Date(a.start) - new Date(b.start));
+            let cursor = bankStart;
+            const coveredSegments = [];
+            gaps.forEach(g => {
+                const gs = new Date(g.start).getTime();
+                const ge = new Date(g.end).getTime() + 86400000;
+                if (gs > cursor) coveredSegments.push([cursor, gs]);
+                cursor = Math.max(cursor, ge);
+            });
+            const bankEndInclusive = bankEnd + 86400000;
+            if (cursor < bankEndInclusive) coveredSegments.push([cursor, bankEndInclusive]);
+
+            coveredSegments.forEach(([s, e]) => {
+                const left = pct(s);
+                const width = pct(e) - left;
+                const bar = document.createElement('div');
+                bar.className = 'timeline-bar';
+                bar.style.left = `${left}%`;
+                bar.style.width = `${Math.max(width, 0.2)}%`;
+                bar.style.backgroundColor = 'var(--accent-primary)';
+                bar.style.opacity = '0.5';
+                combinedTrack.appendChild(bar);
+            });
+
+            gaps.forEach(gap => {
+                const gs = new Date(gap.start).getTime();
+                const ge = new Date(gap.end).getTime() + 86400000;
+                const left = pct(gs);
+                const width = pct(ge) - left;
+
+                const gapDiv = document.createElement('div');
+                gapDiv.className = 'timeline-gap';
+                gapDiv.style.left = `${left}%`;
+                gapDiv.style.width = `${Math.max(width, 0.3)}%`;
+                gapDiv.title = `Missing coverage: ${gap.start} → ${gap.end} (${gap.days} days)\nNo statement at all covers this period`;
+                combinedTrack.appendChild(gapDiv);
+            });
+
+            // Overlap Detection: sweep-line over start/end events, tracking which
+            // files are simultaneously "open" so we can name them in the tooltip.
+            let events = [];
+            bankInfo.Files.forEach(file => {
+                const fs = new Date(file.start_date).getTime();
+                const fe = new Date(file.end_date).getTime() + 86400000;
+                events.push({ time: fs, type: 'start', file: file.filename });
+                events.push({ time: fe, type: 'end', file: file.filename });
+            });
+            events.sort((a, b) => a.time - b.time);
+
+            let active = new Set();
+            let overlapCount = 0;
+            for (let i = 0; i < events.length - 1; i++) {
+                if (events[i].type === 'start') active.add(events[i].file);
+                else active.delete(events[i].file);
+
+                const nextTime = events[i + 1].time;
+                if (active.size > 1 && nextTime > events[i].time) {
+                    const oLeft = pct(events[i].time);
+                    const oWidth = pct(nextTime) - oLeft;
+
+                    const overlapDiv = document.createElement('div');
+                    overlapDiv.className = 'timeline-overlap';
+                    overlapDiv.style.left = `${oLeft}%`;
+                    overlapDiv.style.width = `${Math.max(oWidth, 0.2)}%`;
+                    overlapDiv.title = `Overlapping statements: ${[...active].join(' & ')}\nReview for duplicate transactions in this window`;
+                    combinedTrack.appendChild(overlapDiv);
+                    overlapCount++;
+                }
+            }
+
+            const statusEl = document.getElementById(`overlap-status-${bankId}`);
+            if (statusEl) {
+                if (overlapCount > 0) {
+                    statusEl.innerHTML = `<span class="text-rose-400 font-bold">${overlapCount} overlapping period${overlapCount === 1 ? '' : 's'} detected</span>`;
+                } else {
+                    statusEl.innerHTML = `<span class="text-emerald-400">No overlaps</span>`;
+                }
+            }
         }
     </script>
 </body>

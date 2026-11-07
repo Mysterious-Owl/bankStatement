@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
+    <style>
+        .chart-box {
+            position: relative;
+            height: 18rem;
+        }
+
+        .cat-dot {
+            display: inline-block;
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 999px;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
+        .delta-up { color: var(--bad); }
+        .delta-down { color: var(--ok); }
+
+        /* Mini bars: one per month, current reference month highlighted. */
+        .spark.is-cat { height: 1.5rem; width: 9rem; }
+        .spark.is-cat > i.is-ref { background: var(--accent-primary); }
+
+        .rule-link { white-space: nowrap; }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <div class="page-content p-4 md:p-8">
+    <div class="max-w-7xl mx-auto space-y-8">
+
+        <header class="page-hero flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+                <h1>Insights</h1>
+                <p>Where the money goes, what changed, and what you're committed to. Self transfers and ignored duplicates are excluded throughout.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <select id="bankFilter" onchange="loadAll()" class="h-9 px-3 rounded-lg text-sm">
+                    <option value="">All banks</option>
+                </select>
+                <select id="monthsFilter" onchange="loadTrends()" class="h-9 px-3 rounded-lg text-sm">
+                    <option value="6">6 months</option>
+                    <option value="12" selected>12 months</option>
+                    <option value="24">24 months</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- 6. Trends -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Month over month</h2>
+                    <p id="trendNote"></p>
+                </div>
+            </div>
+            <div class="chart-box"><canvas id="trendChart" aria-label="Monthly income and spending"></canvas></div>
+            <div class="report-table-wrap mt-6">
+                <table class="report-table" id="categoryTable"></table>
+            </div>
+        </section>
+
+        <!-- 5. Recurring -->
+        <section class="glass-panel p-5 md:p-6">
+            <div class="section-head">
+                <div>
+                    <h2>Recurring payments</h2>
+                    <p>Same payee at a regular interval. Frequent but irregular spending (food delivery, say) is a habit, not a commitment, and is left out on purpose.</p>
+                </div>
+            </div>
+            <div class="stat-grid mb-5">
+                <div class="stat"><div class="stat-label">Committed each month</div><div class="stat-value" id="committedOut">–</div><div class="stat-sub">active recurring outgoings</div></div>
+                <div class="stat"><div class="stat-label">Recurring income</div><div class="stat-value" id="recurringIn">–</div><div class="stat-sub">per month, active</div></div>
+                <div class="stat"><div class="stat-label">Price changes</div><div class="stat-value" id="priceChanges">–</div><div class="stat-sub">fixed charges that moved</div></div>
+                <div class="stat"><div class="stat-label">Stopped</div><div class="stat-value" id="stoppedCount">–</div><div class="stat-sub">no longer appearing</div></div>
+            </div>
+            <div class="report-table-wrap">
+                <table class="report-table" id="recurringTable"></table>
+            </div>
+        </section>
+
+        <!-- 7. Uncategorized coverage -->
+        <section class="glass-panel p-5 md:p-6" id="coverage">
+            <div class="section-head">
+                <div>
+                    <h2>Uncategorized spending</h2>
+                    <p>Measured in rupees. A row count hides the one large payment that matters; budgets and category totals can't see any of this until a rule covers it.</p>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6 mb-5">
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5"><span class="muted">Share of spending</span><span id="covSpendLabel"></span></div>
+                    <div class="meter is-warn"><span id="covSpendBar" style="width:0%"></span></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5"><span class="muted">Share of rows</span><span id="covRowsLabel"></span></div>
+                    <div class="meter"><span id="covRowsBar" style="width:0%"></span></div>
+                </div>
+            </div>
+            <div class="report-table-wrap">
+                <table class="report-table" id="coverageTable"></table>
+            </div>
+        </section>
+    </div>
+    </div>
+
+    <script>
+        const esc = App.escapeHtml;
+        const { money, monthLabel, compactMoney } = App;
+        let trendChart = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            Chart.defaults.color = '#8e8e93';
+            Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+            Chart.defaults.font.family = 'Inter, -apple-system, sans-serif';
+            try {
+                const banks = await App.api('/api/banks');
+                const select = document.getElementById('bankFilter');
+                banks.forEach(b => select.insertAdjacentHTML('beforeend', `<option value="${esc(b.Name)}">${esc(b.Name)}</option>`));
+            } catch (_) { /* bank filter is optional */ }
+            loadAll();
+        });
+
+        function bankParam(prefix) {
+            const bank = document.getElementById('bankFilter').value;
+            return bank ? `${prefix}banks=${encodeURIComponent(bank)}` : '';
+        }
+
+        function loadAll() {
+            return Promise.all([loadTrends(), loadRecurring(), loadCoverage()]);
+        }
+
+        function failed(id, err) {
+            document.getElementById(id).innerHTML =
+                `<tbody><tr><td class="empty-state text-bad">Failed to load: ${esc(err.message)}</td></tr></tbody>`;
+        }
+
+        function pctChange(value) {
+            if (value == null) return '<span class="faint">–</span>';
+            // More spending is the bad direction for a spending table.
+            const cls = value > 5 ? 'delta-up' : value < -5 ? 'delta-down' : 'muted';
+            return `<span class="${cls}">${value > 0 ? '+' : ''}${value}%</span>`;
+        }
+
+        /* --- Trends --------------------------------------------------- */
+
+        async function loadTrends() {
+            const months = document.getElementById('monthsFilter').value;
+            let t;
+            try { t = await App.api(`/api/insights/trends?months=${months}${bankParam('&')}`); }
+            catch (err) { return failed('categoryTable', err); }
+
+            if (!t.months.length) {
+                document.getElementById('trendNote').textContent = 'No transactions yet.';
+                document.getElementById('categoryTable').innerHTML = '';
+                return;
+            }
+
+            const ref = t.reference_month;
+            document.getElementById('trendNote').innerHTML = t.latest_partial
+                ? `Statements run to <strong>${t.data_through}</strong>, so ${monthLabel(t.months[t.months.length - 1])} is incomplete &mdash; comparisons use <strong>${monthLabel(ref)}</strong>, the latest full month.`
+                : `Comparisons use <strong>${monthLabel(ref)}</strong>, the latest month.`;
+
+            if (trendChart) trendChart.destroy();
+            trendChart = new Chart(document.getElementById('trendChart'), {
+                type: 'bar',
+                data: {
+                    labels: t.months.map(monthLabel),
+                    datasets: [
+                        { label: 'Income', data: t.credit, backgroundColor: '#30d158', borderRadius: 4, maxBarThickness: 22 },
+                        { label: 'Spending', data: t.debit, backgroundColor: '#ff453a', borderRadius: 4, maxBarThickness: 22 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10 } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${money(ctx.parsed.y)}`,
+                                footer: items => `Net: ${money(t.net[items[0].dataIndex])}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { callback: compactMoney, maxTicksLimit: 5 } }
+                    }
+                }
+            });
+
+            const refIdx = t.months.indexOf(ref);
+            document.getElementById('categoryTable').innerHTML = `
+                <thead><tr>
+                    <th>Category</th>
+                    <th>Last ${t.months.length} months</th>
+                    <th class="num">${monthLabel(ref)}</th>
+                    <th class="num">vs previous</th>
+                    <th class="num">vs 3-month avg</th>
+                    <th class="num">${t.months.length}-month total</th>
+                </tr></thead>
+                <tbody>${t.categories.map(c => {
+                    const peak = Math.max(...c.series, 1);
+                    const bars = c.series.map((v, i) =>
+                        `<i class="${i === refIdx ? 'is-ref' : ''}" style="height:${Math.max(3, 100 * v / peak)}%" title="${t.months[i]}: ${money(v)}"></i>`).join('');
+                    return `<tr>
+                        <td class="whitespace-nowrap"><span class="cat-dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</td>
+                        <td><div class="spark is-cat">${bars}</div></td>
+                        <td class="num">${money(c.reference)}</td>
+                        <td class="num">${pctChange(c.change_vs_previous)}<div class="faint text-xs">${money(c.previous)}</div></td>
+                        <td class="num">${pctChange(c.change_vs_avg3)}<div class="faint text-xs">${money(c.avg3)}</div></td>
+                        <td class="num muted">${money(c.window_total)}</td>
+                    </tr>`;
+                }).join('')}</tbody>`;
+        }
+
+        /* --- Recurring ------------------------------------------------ */
+
+        async function loadRecurring() {
+            let r;
+            try { r = await App.api(`/api/insights/recurring${bankParam('?')}`); }
+            catch (err) { return failed('recurringTable', err); }
+
+            const changed = r.items.filter(i => i.price_changes.length);
+            const stopped = r.items.filter(i => i.status === 'stopped');
+            document.getElementById('committedOut').textContent = money(r.committed_monthly_out);
+            document.getElementById('recurringIn').textContent = money(r.recurring_monthly_in);
+            const pc = document.getElementById('priceChanges');
+            pc.textContent = changed.length;
+            pc.className = 'stat-value ' + (changed.length ? 'text-warn' : '');
+            document.getElementById('stoppedCount').textContent = stopped.length;
+
+            if (!r.items.length) {
+                document.getElementById('recurringTable').innerHTML =
+                    '<tbody><tr><td class="empty-state">No recurring payments found yet. Detection needs at least three regular occurrences.</td></tr></tbody>';
+                return;
+            }
+
+            document.getElementById('recurringTable').innerHTML = `
+                <thead><tr>
+                    <th>Payee</th><th>Every</th><th class="num">Amount</th><th class="num">Per month</th>
+                    <th>Last / next</th><th>Status</th>
+                </tr></thead>
+                <tbody>${r.items.map(i => {
+                    const changes = i.price_changes.map(c =>
+                        `<div class="text-xs ${c.pct > 0 ? 'text-warn' : 'text-ok'}">${c.pct > 0 ? '▲' : '▼'} ${money(c.from)} → ${money(c.to)} on ${c.date} (${c.pct > 0 ? '+' : ''}${c.pct}%)</div>`).join('');
+                    return `<tr>
+                        <td>
+                            <div class="font-medium">${esc(i.payee)}</div>
+                            <div class="faint text-xs">${esc(i.category)} · ${esc(i.banks.join(', '))} · ${i.occurrences}× since ${i.first}</div>
+                            ${changes}
+                        </td>
+                        <td class="whitespace-nowrap">${esc(i.cadence)}<div class="faint text-xs">~${i.interval_days} days · ${i.regularity}% regular</div></td>
+                        <td class="num ${i.direction === 'in' ? 'text-emerald-400' : ''}">${money(i.last_amount)}<div class="faint text-xs">${i.amount_kind === 'fixed' ? 'fixed' : `varies, avg ${money(i.avg_amount)}`}</div></td>
+                        <td class="num">${money(i.monthly_equivalent)}</td>
+                        <td class="whitespace-nowrap text-xs">${i.last}<div class="faint">${i.status === 'active' ? 'next ~' + i.next_expected : '—'}</div></td>
+                        <td>${i.status === 'active'
+                            ? `<span class="pill ${i.direction === 'in' ? 'pill-info' : 'pill-ok'}">${i.direction === 'in' ? 'Income' : 'Active'}</span>`
+                            : '<span class="pill pill-mute">Stopped</span>'}</td>
+                    </tr>`;
+                }).join('')}</tbody>`;
+        }
+
+        /* --- Coverage ------------------------------------------------- */
+
+        async function loadCoverage() {
+            let c;
+            try { c = await App.api(`/api/insights/coverage${bankParam('?')}`); }
+            catch (err) { return failed('coverageTable', err); }
+
+            document.getElementById('covSpendBar').style.width = `${c.pct_spend}%`;
+            document.getElementById('covRowsBar').style.width = `${c.pct_rows}%`;
+            document.getElementById('covSpendLabel').textContent = `${c.pct_spend}% · ${money(c.uncategorized_total)} of ${money(c.spend_total)}`;
+            document.getElementById('covRowsLabel').textContent = `${c.pct_rows}% · ${c.rows_uncategorized} of ${c.rows_total}`;
+
+            if (!c.top_groups.length) {
+                document.getElementById('coverageTable').innerHTML =
+                    '<tbody><tr><td class="empty-state">Every rupee of spending is categorized.</td></tr></tbody>';
+                return;
+            }
+
+            document.getElementById('coverageTable').innerHTML = `
+                <thead><tr><th>Looks like</th><th class="num">Spent</th><th class="num">Share</th><th class="num">Rows</th><th>Last seen</th><th></th></tr></thead>
+                <tbody>${c.top_groups.map(g => {
+                    const href = `/rules?pattern=${encodeURIComponent(g.suggested_pattern)}&name=${encodeURIComponent(g.stem)}`;
+                    return `<tr>
+                        <td><div class="font-medium">${esc(g.stem)}</div><div class="faint text-xs">${esc(g.sample)}</div></td>
+                        <td class="num">${money(g.total)}</td>
+                        <td class="num">${g.share}%</td>
+                        <td class="num">${g.count}</td>
+                        <td class="text-xs whitespace-nowrap">${g.last_seen}</td>
+                        <td class="text-right">${g.suggested_pattern
+                            ? `<a class="btn-small rule-link" href="${href}" title="Opens the rule editor with pattern ${esc(g.suggested_pattern)}">Create rule</a>`
+                            : ''}</td>
+                    </tr>`;
+                }).join('')}</tbody>`;
+        }
+    </script>
+</body>
+
+</html>

@@ -1,51 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Category Tags</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #e2e8f0;
-            min-height: 100vh;
-        }
-
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(148, 163, 184, 0.1);
-            border-radius: 16px;
-        }
-
-        .tag-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
-            background: rgba(59, 130, 246, 0.2);
-            border: 1px solid rgba(59, 130, 246, 0.4);
-            border-radius: 12px;
-            font-size: 11px;
-            color: #60a5fa;
-            margin-right: 4px;
-        }
-
-        .tag-chip .remove {
-            cursor: pointer;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-        }
-
-        .tag-chip .remove:hover {
-            opacity: 1;
-        }
-
         table {
             width: 100%;
             border-collapse: separate;
@@ -56,38 +22,30 @@
         td {
             padding: 12px;
             text-align: left;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            border-bottom: 1px solid rgba(142, 142, 147, 0.1);
         }
 
         th {
-            background: rgba(15, 23, 42, 0.5);
+            background: rgba(28, 28, 30, 0.5);
             font-weight: 600;
             font-size: 11px;
             text-transform: uppercase;
-            color: #94a3b8;
+            color: #8e8e93;
         }
 
         tr:hover td {
-            background: rgba(51, 65, 85, 0.3);
+            background: rgba(58, 58, 60, 0.3);
         }
     </style>
 </head>
 
-<body class="p-8">
-    <header class="mb-8">
-        <nav class="flex justify-between items-center">
-            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                Category Tags
-            </h1>
-            <div class="flex gap-4">
-                <a href="/" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Dashboard</a>
-                <a href="/data" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Data
-                    Grid</a>
-                <a href="/rules"
-                    class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Rules</a>
-                <a href="/tags" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Tags</a>
-            </div>
-        </nav>
+<body class="min-h-screen">
+
+
+    <div class="page-content p-4 md:p-8">
+    <header class="page-hero mb-8">
+        <h1>Category Tags</h1>
+        <p>Manage default tags applied per category</p>
     </header>
 
     <div class="glass-panel p-6 mb-4">
@@ -116,6 +74,8 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
     </div>
 
     <script>
@@ -160,15 +120,15 @@
                     <tr>
                         <td>
                             <span class="px-2 py-1 rounded text-sm" style="background: ${cat.color}20; color: ${cat.color}; border: 1px solid ${cat.color}40">
-                                ${cat.name}
+                                ${App.escapeHtml(cat.name)}
                             </span>
                         </td>
                         <td>
                             <div class="flex flex-wrap items-center gap-2">
                                 ${tags.map(tag => `
                                     <div class="tag-chip">
-                                        <span>${tag}</span>
-                                        <span class="remove" onclick='removeTag("${cat.id}", "${tag}")'>×</span>
+                                        <span>${App.escapeHtml(tag)}</span>
+                                        <span class="remove" onclick="removeTag(${App.jsArg(cat.id)}, ${App.jsArg(tag)})">×</span>
                                     </div>
                                 `).join('')}
                                 <input 
@@ -216,14 +176,7 @@
 
         async function saveCategoryTags(categoryId) {
             try {
-                await fetch('/api/tags/category', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        category_id: categoryId,
-                        tags: categoryTags[categoryId]
-                    })
-                });
+                await App.postJson('/api/tags/category', { category_id: categoryId, tags: categoryTags[categoryId] });
             } catch (err) {
                 console.error('Failed to save category tags:', err);
             }

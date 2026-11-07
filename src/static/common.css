@@ -1,0 +1,911 @@
+/*
+ * Shared design system for the Bank Statement Analytics UI.
+ *
+ * Visual language: crisp near-black surfaces in clear elevation steps, hairline
+ * borders instead of glows, one blue accent, tight display type, tabular
+ * numbers, and restrained motion. Surfaces are solid rather than frosted --
+ * blur is reserved for the floating layers (top bar, menus, palette) where it
+ * actually communicates "this sits above the page".
+ *
+ * Every page links this before its own <style> block, so page-specific
+ * overrides later in the cascade still win where a page needs them.
+ */
+
+:root {
+    /* Elevation: page < surface < raised < overlay */
+    --bg-deep: #09090b;
+    --bg-elevated: #0f0f12;
+    --surface: #111114;
+    --surface-raised: #18181c;
+    --surface-overlay: rgba(24, 24, 28, 0.88);
+    --bg-card: var(--surface);
+    --bg-card-hover: var(--surface-raised);
+
+    --accent-primary: #0a84ff;
+    --accent-primary-hover: #3b9bff;
+    --accent-soft: rgba(10, 132, 255, 0.14);
+    --accent-secondary: #bf5af2;
+
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #71717a;
+
+    --border-color: rgba(255, 255, 255, 0.07);
+    --border-color-strong: rgba(255, 255, 255, 0.12);
+
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --control-height: 2.25rem;
+
+    --shadow-overlay: 0 16px 48px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --ease-apple: cubic-bezier(0.4, 0, 0.2, 1);
+    --topbar-height: 56px;
+    --subnav-height: 44px;
+}
+
+* {
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    background-color: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+::selection {
+    background: rgba(10, 132, 255, 0.35);
+}
+
+/* A single, very faint light source at the top -- depth without decoration. */
+.bg-ambient {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background: radial-gradient(1200px 500px at 50% -220px, rgba(10, 132, 255, 0.10), transparent 70%);
+}
+
+.bg-ambient .orb {
+    display: none;
+}
+
+/* ==========================================================================
+   Navigation: section tabs on top, the current section's pages beneath.
+   Every page stays one click away within its section, and the bar no longer
+   has to fit eleven links in one row.
+   ========================================================================== */
+
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(9, 9, 11, 0.78);
+    backdrop-filter: blur(16px) saturate(170%);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.topbar-inner {
+    max-width: 84rem;
+    margin: 0 auto;
+    height: var(--topbar-height);
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 650;
+    font-size: 0.9375rem;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+    white-space: nowrap;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+.brand-mark {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(145deg, #2b8cff, #0a5fd1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.topbar-links {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    overflow-x: auto;
+    flex: 1;
+    min-width: 0;
+    scrollbar-width: none;
+}
+
+.topbar-links::-webkit-scrollbar,
+.subnav-links::-webkit-scrollbar {
+    display: none;
+}
+
+.nav-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: background-color 0.15s var(--ease-apple), color 0.15s var(--ease-apple);
+    text-decoration: none;
+}
+
+.nav-pill:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+
+.nav-pill.active {
+    background: rgba(255, 255, 255, 0.09);
+    color: var(--text-primary);
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.cmdk-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2rem;
+    padding: 0 0.5rem 0 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color-strong);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-tertiary);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease-apple), color 0.15s var(--ease-apple);
+}
+
+.cmdk-trigger:hover {
+    color: var(--text-secondary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+kbd {
+    font-family: inherit;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 5px;
+    border: 1px solid var(--border-color-strong);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
+.subnav {
+    border-top: 1px solid var(--border-color);
+}
+
+.subnav-links {
+    max-width: 84rem;
+    margin: 0 auto;
+    height: var(--subnav-height);
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: stretch;
+    gap: 1.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.subnav-link {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s var(--ease-apple), border-color 0.15s var(--ease-apple);
+}
+
+.subnav-link:hover {
+    color: var(--text-primary);
+}
+
+.subnav-link.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-primary);
+}
+
+@media (max-width: 768px) {
+    .topbar-inner {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 0.625rem 1rem;
+        row-gap: 0.5rem;
+    }
+
+    .topbar-links {
+        order: 3;
+        flex: 0 0 100%;
+        width: 100%;
+    }
+
+    .topbar-actions {
+        margin-left: auto;
+    }
+
+    .cmdk-trigger .cmdk-label,
+    .cmdk-trigger kbd,
+    .topbar-actions .btn-primary .btn-label {
+        display: none;
+    }
+
+    .subnav-links {
+        padding: 0 1rem;
+    }
+}
+
+/* ==========================================================================
+   Command palette (Ctrl/Cmd + K)
+   ========================================================================== */
+
+.cmdk-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 12vh 1rem 1rem;
+    animation: cmdk-fade 0.12s var(--ease-apple);
+}
+
+.cmdk-panel {
+    width: min(38rem, 100%);
+    background: var(--surface-overlay);
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-overlay);
+    overflow: hidden;
+    animation: cmdk-rise 0.16s var(--ease-apple);
+}
+
+.cmdk-input {
+    width: 100%;
+    height: 3.25rem !important;
+    padding: 0 1.125rem !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 0.9375rem;
+}
+
+.cmdk-list {
+    max-height: 22rem;
+    overflow-y: auto;
+    padding: 0.375rem;
+}
+
+.cmdk-group {
+    padding: 0.5rem 0.75rem 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.cmdk-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.cmdk-item .cmdk-hint {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.cmdk-item.is-active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.cmdk-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.875rem;
+}
+
+.cmdk-footer {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+}
+
+@keyframes cmdk-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cmdk-rise { from { opacity: 0; transform: translateY(-6px) scale(0.99); } to { opacity: 1; transform: none; } }
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.btn-primary,
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: var(--control-height);
+    padding: 0 1rem;
+    border-radius: var(--radius);
+    font-weight: 550;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s var(--ease-apple), border-color 0.15s var(--ease-apple), transform 0.1s var(--ease-apple);
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: #fff;
+    border: 1px solid transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color-strong);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.btn-primary:active,
+.btn-secondary:active {
+    transform: scale(0.98);
+}
+
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.nav-pill:focus-visible,
+.subnav-link:focus-visible,
+.cmdk-trigger:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.45;
+    cursor: default;
+    transform: none;
+}
+
+/* ==========================================================================
+   Page header
+   ========================================================================== */
+
+.page-hero {
+    margin-bottom: 1.75rem;
+}
+
+.page-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin-bottom: 0.375rem;
+}
+
+.page-hero h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    color: var(--text-primary);
+}
+
+.page-hero p {
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+    font-weight: 400;
+    margin-top: 0.375rem;
+    max-width: 48rem;
+}
+
+/* Retired: titles are plain text now. Kept as a no-op so older markup that
+   still carries the class renders correctly. */
+.gradient-text {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Surfaces
+   ========================================================================== */
+
+.glass-panel,
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.card {
+    padding: 1.5rem;
+}
+
+.mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.tabular-nums,
+.num {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Form controls -- one height, one radius, one focus ring everywhere.
+   Specificity is pinned at (0,0,2) via `html body :where(...)`: just above
+   Tailwind's preflight reset (0,0,1, which zeroes input padding and is injected
+   after this sheet) and below any utility or page class (0,1,0) -- so these
+   are true defaults that a page can still override.
+   ========================================================================== */
+
+html body :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), select, textarea) {
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color-strong);
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+    transition: border-color 0.15s var(--ease-apple), box-shadow 0.15s var(--ease-apple), background-color 0.15s var(--ease-apple);
+}
+
+html body :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), select) {
+    min-height: var(--control-height);
+}
+
+html body input::placeholder,
+html body textarea::placeholder {
+    color: var(--text-tertiary);
+}
+
+html body :where(input:not([type='checkbox']):not([type='radio']):hover, select:hover, textarea:hover) {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+html body :where(input:focus, select:focus, textarea:focus) {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.22);
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+html body :where(select) {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    cursor: pointer;
+}
+
+/* The chevron needs its space even when markup sets padding with a utility
+   like px-2: :not([multiple]) lifts this to (0,1,1), just above a utility
+   class, and it only ever touches the right padding. */
+html body select:not([multiple]) {
+    padding-right: 1.75rem;
+    background-position: right 0.55rem center;
+}
+
+html body :where(select option) {
+    background: #18181c;
+    color: var(--text-primary);
+}
+
+html body :where(input[type='checkbox'], input[type='radio']) {
+    accent-color: var(--accent-primary);
+}
+
+html body :where(input[type='date'], input[type='month']) {
+    color-scheme: dark;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    background: rgba(10, 132, 255, 0.12);
+    border: 1px solid rgba(10, 132, 255, 0.28);
+    border-radius: 6px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #7cb8ff;
+    margin-right: 4px;
+    margin-bottom: 4px;
+}
+
+.tag-chip .remove {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s var(--ease-apple);
+}
+
+.tag-chip .remove:hover {
+    opacity: 1;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.24);
+}
+
+/* ==========================================================================
+   Modals and autocomplete -- shared by Rules, Tags and the Data Grid.
+   ========================================================================== */
+
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    padding: 1rem;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+/* Pages toggle either class; both open the modal. */
+.modal.active,
+.modal.show {
+    display: flex;
+}
+
+.modal-content {
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--surface-raised);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-overlay);
+}
+
+.autocomplete-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0.25rem;
+    background: var(--surface-overlay);
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-overlay);
+}
+
+.autocomplete-item {
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.autocomplete-item:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-primary);
+}
+
+.autocomplete-item.selected {
+    background: var(--accent-primary);
+    color: #fff;
+}
+
+/* ==========================================================================
+   Layout & motion
+   ========================================================================== */
+
+/* Every page wraps its content in .page-content; this gives them one width
+   and one rhythm without touching each page's markup. */
+.page-content {
+    max-width: 84rem;
+    margin: 0 auto;
+    animation: fade-in-up 0.35s var(--ease-apple);
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-content,
+    .cmdk-backdrop,
+    .cmdk-panel {
+        animation: none;
+    }
+}
+
+/* ==========================================================================
+   Report components -- shared by the Audit, Budgets and Insights pages.
+   ========================================================================== */
+
+:root {
+    --ok: #30d158;
+    --warn: #ff9f0a;
+    --bad: #ff453a;
+    --info: #64d2ff;
+}
+
+.section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.section-head h2 {
+    font-size: 1.125rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+.section-head p {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-top: 0.125rem;
+    max-width: 46rem;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.75rem;
+}
+
+.stat {
+    /* Translucent rather than a solid token, so a tile reads as one step up
+       whether it sits on the page or inside a panel. */
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 0.875rem;
+    padding: 0.875rem 1rem;
+}
+
+.stat-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-top: 0.25rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.125rem;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.pill-ok   { background: rgba(48, 209, 88, 0.14);  color: var(--ok);   border-color: rgba(48, 209, 88, 0.3); }
+.pill-warn { background: rgba(255, 159, 10, 0.14); color: var(--warn); border-color: rgba(255, 159, 10, 0.3); }
+.pill-bad  { background: rgba(255, 69, 58, 0.14);  color: var(--bad);  border-color: rgba(255, 69, 58, 0.3); }
+.pill-info { background: rgba(100, 210, 255, 0.12); color: var(--info); border-color: rgba(100, 210, 255, 0.28); }
+.pill-mute { background: rgba(255, 255, 255, 0.06); color: var(--text-secondary); border-color: var(--border-color); }
+
+.meter {
+    position: relative;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.meter > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    transition: width 0.4s var(--ease-apple);
+}
+
+.meter.is-ok > span   { background: var(--ok); }
+.meter.is-warn > span { background: var(--warn); }
+.meter.is-bad > span  { background: var(--bad); }
+
+/* A tick showing how far through the period we are, for pacing. */
+.meter .pace {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--text-primary);
+    opacity: 0.7;
+}
+
+.report-table-wrap {
+    overflow-x: auto;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.report-table th {
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.report-table td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: top;
+}
+
+.report-table tr:last-child td {
+    border-bottom: none;
+}
+
+.report-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.muted { color: var(--text-secondary); }
+.faint { color: var(--text-tertiary); }
+.text-ok { color: var(--ok); }
+.text-warn { color: var(--warn); }
+.text-bad { color: var(--bad); }
+
+.btn-small {
+    padding: 0.3rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.15s var(--ease-apple);
+    white-space: nowrap;
+}
+
+.btn-small:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-small:disabled { opacity: 0.4; cursor: default; }
+.btn-small.is-primary { background: var(--accent-primary); border-color: var(--accent-primary); color: #fff; }
+.btn-small.is-primary:hover { background: var(--accent-primary-hover); }
+
+.empty-state {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.875rem;
+}
+
+/* Inline mini bar chart for short histories (six months of a budget). */
+.spark {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 2rem;
+}
+
+.spark > i {
+    flex: 1;
+    min-width: 4px;
+    border-radius: 2px 2px 0 0;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.spark > i.is-over { background: var(--bad); }
+.spark > i.is-current { background: var(--accent-primary); }

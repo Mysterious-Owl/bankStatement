@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budgets</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
+    <style>
+        .budget-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+            gap: 1rem;
+        }
+
+        .budget-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1rem 1.125rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .budget-card.is-over { border-color: rgba(255, 69, 58, 0.45); }
+        .budget-card.is-at_risk { border-color: rgba(255, 159, 10, 0.45); }
+
+        .budget-amount {
+            font-size: 1.375rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+            gap: 0.75rem;
+            align-items: end;
+        }
+
+        .form-grid label {
+            display: block;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-tertiary);
+            margin-bottom: 0.375rem;
+        }
+
+        .form-grid input, .form-grid select {
+            width: 100%;
+            height: 2.25rem;
+            padding: 0 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.8125rem;
+        }
+
+        .caveat {
+            border: 1px solid rgba(255, 159, 10, 0.35);
+            background: rgba(255, 159, 10, 0.08);
+            border-radius: 0.875rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.8125rem;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <div class="page-content p-4 md:p-8">
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <header class="page-hero flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+                <h1>Budgets</h1>
+                <p>Monthly spending limits per category or tag, paced against how much of the month your statements cover.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="month" id="monthPicker" onchange="loadStatus(this.value)" class="h-9 px-3 rounded-lg text-sm">
+                <button class="btn-primary" onclick="openForm()">Add budget</button>
+            </div>
+        </header>
+
+        <div id="caveat" class="caveat hidden"></div>
+
+        <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Budgeted</div><div class="stat-value" id="sumBudgeted">–</div><div class="stat-sub" id="sumBudgetedSub"></div></div>
+            <div class="stat"><div class="stat-label">Spent</div><div class="stat-value" id="sumSpent">–</div><div class="stat-sub" id="sumSpentSub"></div></div>
+            <div class="stat"><div class="stat-label">Over or at risk</div><div class="stat-value" id="sumRisk">–</div><div class="stat-sub" id="sumRiskSub"></div></div>
+            <div class="stat"><div class="stat-label">Month covered</div><div class="stat-value" id="sumCovered">–</div><div class="stat-sub" id="sumCoveredSub"></div></div>
+        </div>
+
+        <!-- Add / edit -->
+        <section id="budgetForm" class="glass-panel p-5 hidden">
+            <div class="section-head">
+                <div>
+                    <h2 id="formTitle">Add budget</h2>
+                    <p>The suggested amount is the median of the last three full months' spending, so one unusual month doesn't set the bar.</p>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div>
+                    <label for="fScope">Budget by</label>
+                    <select id="fScope" onchange="populateTargets()">
+                        <option value="category">Category</option>
+                        <option value="tag">Tag</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="fTarget">Category / tag</label>
+                    <select id="fTarget" onchange="applySuggestion()"></select>
+                </div>
+                <div>
+                    <label for="fAmount">Monthly amount (₹)</label>
+                    <input id="fAmount" type="number" min="1" step="100">
+                </div>
+                <div>
+                    <label for="fStart">Starts</label>
+                    <input id="fStart" type="month">
+                </div>
+                <div>
+                    <label class="!normal-case !tracking-normal !text-xs !font-normal !text-slate-300 flex items-center gap-2 h-9 cursor-pointer">
+                        <input id="fRollover" type="checkbox" class="!w-4 !h-4">
+                        Roll unspent money forward
+                    </label>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn-small is-primary" onclick="saveBudget()">Save</button>
+                    <button class="btn-small" onclick="closeForm()">Cancel</button>
+                </div>
+            </div>
+            <div id="suggestionHint" class="text-xs muted mt-3"></div>
+        </section>
+
+        <section>
+            <div id="budgetGrid" class="budget-grid"></div>
+            <div id="budgetEmpty" class="glass-panel empty-state hidden">
+                No budgets yet. <button class="btn-small is-primary ml-2" onclick="openForm()">Add your first budget</button>
+            </div>
+        </section>
+    </div>
+    </div>
+
+    <script>
+        const esc = App.escapeHtml;
+        const { money } = App;
+        let status = null;
+        let suggestions = { categories: [], tags: [] };
+        let categories = [];
+        let tags = [];
+        let editingId = null;
+
+        const STATUS = {
+            ok: ['pill-ok', 'On track', 'is-ok'],
+            at_risk: ['pill-warn', 'At risk', 'is-warn'],
+            over: ['pill-bad', 'Over budget', 'is-bad'],
+            no_data: ['pill-mute', 'No data yet', '']
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const [cats, tagList] = await Promise.all([
+                App.api('/api/categories').catch(() => []),
+                App.api('/api/tags/autocomplete').catch(() => [])
+            ]);
+            categories = cats.map(c => c.name);
+            tags = tagList;
+            await loadStatus();
+        });
+
+        async function loadStatus(month) {
+            try {
+                status = await App.api('/api/budgets/status' + (month ? `?month=${month}` : ''));
+            } catch (err) {
+                document.getElementById('budgetGrid').innerHTML =
+                    `<div class="empty-state text-bad">Failed to load: ${esc(err.message)}</div>`;
+                return;
+            }
+            document.getElementById('monthPicker').value = status.month;
+            suggestions = await App.api(`/api/budgets/suggestions?month=${status.month}`).catch(() => suggestions);
+            render();
+        }
+
+        function render() {
+            const budgets = status.budgets;
+            const risky = budgets.filter(b => b.status === 'over' || b.status === 'at_risk');
+            const over = budgets.filter(b => b.status === 'over').length;
+
+            document.getElementById('sumBudgeted').textContent = money(status.total_budgeted);
+            document.getElementById('sumBudgetedSub').textContent = `${budgets.length} budget${budgets.length === 1 ? '' : 's'}, incl. rollover`;
+            document.getElementById('sumSpent').textContent = money(status.total_actual);
+            document.getElementById('sumSpentSub').textContent = status.total_budgeted
+                ? `${Math.round(100 * status.total_actual / status.total_budgeted)}% of budgeted` : '';
+            const riskEl = document.getElementById('sumRisk');
+            riskEl.textContent = risky.length;
+            riskEl.className = 'stat-value ' + (over ? 'text-bad' : risky.length ? 'text-warn' : 'text-ok');
+            document.getElementById('sumRiskSub').textContent = risky.length ? `${over} over · ${risky.length - over} at risk` : 'all on track';
+            document.getElementById('sumCovered').textContent = `${status.pct_elapsed}%`;
+            document.getElementById('sumCoveredSub').textContent = status.data_through
+                ? `statements run to ${status.data_through}` : 'no statements yet';
+
+            // A category budget can't see spending that isn't categorised, so
+            // say how much of the month that is before anyone trusts a green bar.
+            const cov = status.coverage;
+            const caveat = document.getElementById('caveat');
+            if (cov && cov.pct_spend >= 10) {
+                caveat.classList.remove('hidden');
+                caveat.innerHTML = `<strong class="text-warn">${cov.pct_spend}% of this month's spending (${money(cov.uncategorized_total)}) is uncategorized</strong>
+                    <span class="muted">&mdash; category budgets can't see it, so they may look healthier than they are.</span>
+                    <a href="/insights#coverage" class="btn-small ml-2">See what's uncategorized</a>`;
+            } else {
+                caveat.classList.add('hidden');
+            }
+
+            document.getElementById('budgetEmpty').classList.toggle('hidden', budgets.length > 0);
+            document.getElementById('budgetGrid').innerHTML = budgets.map((b, i) => renderCard(b, i)).join('');
+        }
+
+        function renderCard(b, index) {
+            const [pillClass, label, meterClass] = STATUS[b.status] || STATUS.no_data;
+            const pct = b.available > 0 ? Math.min(100, 100 * b.actual / b.available) : 100;
+            const peak = Math.max(...b.history.map(h => h.actual), b.amount, 1);
+            const spark = b.history.map((h, hi) => {
+                const last = hi === b.history.length - 1;
+                const cls = h.actual > b.amount ? 'is-over' : (last ? 'is-current' : '');
+                return `<i class="${cls}" style="height:${Math.max(4, 100 * h.actual / peak)}%" title="${h.month}: ${money(h.actual)}"></i>`;
+            }).join('');
+
+            let outlook;
+            if (b.status === 'no_data') {
+                outlook = 'No statements cover this month yet.';
+            } else if (b.status === 'over') {
+                outlook = `<span class="text-bad">${money(-b.remaining)} over</span>`;
+            } else if (b.pct_elapsed < 100 && b.projected != null) {
+                outlook = `${money(b.remaining)} left · on pace for <span class="${b.projected > b.available ? 'text-warn' : ''}">${money(b.projected)}</span>`;
+            } else {
+                outlook = `${money(b.remaining)} left`;
+            }
+
+            const carry = b.rollover && b.carry
+                ? `<div class="text-xs faint">${money(b.amount)} + ${money(b.carry)} rolled ${b.carry >= 0 ? 'over' : 'back'} from earlier months</div>`
+                : '';
+
+            return `
+                <div class="budget-card is-${b.status}">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="font-semibold">${esc(b.target)}</div>
+                            <div class="text-xs faint">${b.scope === 'tag' ? 'Tag' : 'Category'}${b.rollover ? ' · rollover' : ''}</div>
+                        </div>
+                        <span class="pill ${pillClass}">${label}</span>
+                    </div>
+                    <div>
+                        <span class="budget-amount">${money(b.actual)}</span>
+                        <span class="muted text-sm"> of ${money(b.available)}</span>
+                        ${carry}
+                    </div>
+                    <div class="meter ${meterClass}" title="${b.pct_used ?? 0}% used, ${b.pct_elapsed}% of month covered">
+                        <span style="width:${pct}%"></span>
+                        ${b.pct_elapsed > 0 && b.pct_elapsed < 100 ? `<div class="pace" style="left:${b.pct_elapsed}%" title="${b.pct_elapsed}% of the month covered"></div>` : ''}
+                    </div>
+                    <div class="text-xs muted">${outlook}</div>
+                    <div class="flex items-end justify-between gap-3">
+                        <div class="flex-1"><div class="spark">${spark}</div>
+                            <div class="text-[10px] faint mt-1">last ${b.history.length} months</div></div>
+                        <div class="flex gap-1.5">
+                            <button class="btn-small" onclick="openForm(${index})">Edit</button>
+                            <button class="btn-small" onclick="deleteBudget(${index})">Delete</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        /* --- Form ----------------------------------------------------- */
+
+        function suggestionFor(scope, target) {
+            const list = scope === 'tag' ? suggestions.tags : suggestions.categories;
+            return list.find(s => s.target === target);
+        }
+
+        function populateTargets(selected) {
+            const scope = document.getElementById('fScope').value;
+            const taken = new Set(status.budgets.filter(b => b.scope === scope && b.id !== editingId).map(b => b.target));
+            // Order by how much is actually spent, so the categories worth
+            // budgeting come first.
+            const ranked = (scope === 'tag' ? suggestions.tags : suggestions.categories).map(s => s.target);
+            const all = scope === 'tag' ? tags : categories;
+            const options = [...new Set([...ranked, ...all])].filter(t => t && t !== 'Uncategorized' && !taken.has(t));
+
+            document.getElementById('fTarget').innerHTML = options.length
+                ? options.map(t => `<option value="${esc(t)}" ${t === selected ? 'selected' : ''}>${esc(t)}</option>`).join('')
+                : `<option value="">No ${scope === 'tag' ? 'tags' : 'categories'} available</option>`;
+            if (!editingId) applySuggestion();
+        }
+
+        function applySuggestion() {
+            const scope = document.getElementById('fScope').value;
+            const target = document.getElementById('fTarget').value;
+            const s = suggestionFor(scope, target);
+            const hint = document.getElementById('suggestionHint');
+            if (s && s.suggested > 0) {
+                if (!editingId) document.getElementById('fAmount').value = s.suggested;
+                hint.textContent = `${s.months[0]} to ${s.months[s.months.length - 1]}: median ${money(s.suggested)} a month, average ${money(s.average)}.`;
+            } else {
+                hint.textContent = target ? 'No spending in the last three months to base a suggestion on.' : '';
+            }
+        }
+
+        function openForm(index) {
+            const b = index == null ? null : status.budgets[index];
+            editingId = b ? b.id : null;
+            document.getElementById('formTitle').textContent = b ? `Edit budget · ${b.target}` : 'Add budget';
+            document.getElementById('fScope').value = b ? b.scope : 'category';
+            document.getElementById('fScope').disabled = !!b;
+            document.getElementById('fAmount').value = b ? b.amount : '';
+            document.getElementById('fRollover').checked = b ? !!b.rollover : false;
+            document.getElementById('fStart').value = b ? b.start_month : status.month;
+            populateTargets(b ? b.target : undefined);
+            document.getElementById('fTarget').disabled = !!b;
+            const form = document.getElementById('budgetForm');
+            form.classList.remove('hidden');
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function closeForm() {
+            editingId = null;
+            document.getElementById('budgetForm').classList.add('hidden');
+        }
+
+        async function saveBudget() {
+            const body = {
+                id: editingId,
+                scope: document.getElementById('fScope').value,
+                target: document.getElementById('fTarget').value,
+                amount: parseFloat(document.getElementById('fAmount').value),
+                rollover: document.getElementById('fRollover').checked,
+                start_month: document.getElementById('fStart').value || null
+            };
+            if (!body.target) return alert('Choose a category or tag.');
+            if (!(body.amount > 0)) return alert('Enter a monthly amount above zero.');
+            try {
+                await App.postJson('/api/budgets', body);
+            } catch (err) {
+                let detail = err.message;
+                try { detail = JSON.parse(detail).detail || detail; } catch (_) { /* plain text */ }
+                return alert('Could not save: ' + detail);
+            }
+            closeForm();
+            await loadStatus(status.month);
+        }
+
+        async function deleteBudget(index) {
+            const b = status.budgets[index];
+            if (!confirm(`Delete the ${b.scope} budget for "${b.target}"?`)) return;
+            try {
+                await App.api(`/api/budgets/${b.id}`, { method: 'DELETE' });
+            } catch (err) { return alert('Delete failed: ' + err.message); }
+            await loadStatus(status.month);
+        }
+    </script>
+</body>
+
+</html>

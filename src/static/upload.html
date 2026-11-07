@@ -6,33 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Bank Statements</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
     <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-deep: #020617;
-            --bg-card: #0f172a;
-            --accent-primary: #3b82f6;
-            --accent-secondary: #8b5cf6;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --border-color: #334155;
-        }
-
-        body {
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-deep);
-            color: var(--text-primary);
-        }
-
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-color);
-            border-radius: 1rem;
-        }
-
         .drop-zone {
             border: 2px dashed var(--border-color);
             transition: all 0.3s ease;
@@ -62,35 +41,16 @@
         }
 
         .step-inactive {
-            background: #1e293b;
-            color: #64748b;
+            background: #2c2c2e;
+            color: #6e6e73;
         }
 
         .mapping-card {
-            background: rgba(30, 41, 59, 0.5);
-            border: 1px solid rgba(71, 85, 105, 0.3);
-            border-radius: 0.75rem;
-        }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        input,
-        select {
-            background: #0f172a;
-            border: 1px solid #334155;
-            color: #f8fafc;
-        }
-
-        input:focus,
-        select:focus {
-            border-color: var(--accent-primary);
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
         }
 
         .scrollbar-hide::-webkit-scrollbar {
@@ -111,8 +71,8 @@
         }
 
         select option {
-            background-color: #020617 !important; /* bg-slate-950 */
-            color: #f1f5f9 !important; /* text-slate-100 */
+            background-color: #0a0a0a !important; /* bg-slate-950 */
+            color: #f5f5f7 !important; /* text-slate-100 */
         }
 
         /* Tooltip Style */
@@ -123,10 +83,10 @@
         .tooltip .tooltiptext {
             visibility: hidden;
             width: 220px;
-            background-color: rgba(15, 23, 42, 0.95);
-            color: #f1f5f9;
+            background-color: rgba(28, 28, 30, 0.95);
+            color: #f5f5f7;
             text-align: left;
-            border: 1px solid rgba(71, 85, 105, 0.5);
+            border: 1px solid rgba(72, 72, 74, 0.5);
             border-radius: 0.75rem;
             padding: 12px;
             position: absolute;
@@ -150,7 +110,9 @@
     </style>
 </head>
 
-<body class="p-4 md:p-8 min-h-screen text-slate-200">
+<body class="min-h-screen text-slate-200">
+
+
     <!-- History Modal -->
     <div id="historyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeHistoryModal()"></div>
@@ -170,13 +132,14 @@
         </div>
     </div>
 
+    <div class="page-content p-4 md:p-8">
     <div class="max-w-7xl mx-auto">
         <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <header class="page-hero flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <div class="flex items-center gap-6">
                 <div>
-                    <h1 class="text-4xl font-bold tracking-tight gradient-text">Statement Ingestion</h1>
-                    <p class="text-slate-400 mt-1 font-light">Upload, Map, Consolidate, and Reconcile</p>
+                    <h1>Statement Ingestion</h1>
+                    <p>Upload, Map, Consolidate, and Reconcile</p>
                 </div>
                 <!-- Step Dots -->
                 <div class="flex items-center gap-2 bg-slate-900/50 p-3 rounded-2xl border border-slate-800 shadow-inner">
@@ -185,24 +148,6 @@
                     <div id="step3-dot" class="w-2 h-2 rounded-full bg-slate-700 transition-all duration-500" title="Process"></div>
                 </div>
             </div>
-            <nav class="flex items-center gap-3">
-                <a href="/"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Dashboard</span>
-                </a>
-                <a href="/data"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Data Grid</span>
-                </a>
-                <a href="/rules"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Rules</span>
-                </a>
-                <a href="/reconcile"
-                    class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                    <span>Reconcile</span>
-                </a>
-            </nav>
         </header>
 
 
@@ -303,6 +248,7 @@
             </div>
         </div>
 
+    </div>
     </div>
 
     <!-- Loading Overlay -->
@@ -408,7 +354,7 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         </div>
                         <div class="truncate text-left">
-                            <div class="text-sm font-semibold truncate text-slate-200" title="${f.name}">${f.name}</div>
+                            <div class="text-sm font-semibold truncate text-slate-200" title="${App.escapeHtml(f.name)}">${App.escapeHtml(f.name)}</div>
                             <div class="text-[10px] text-slate-500 font-mono uppercase">${(f.size / 1024).toFixed(1)} KB</div>
                         </div>
                     </div>
@@ -536,11 +482,11 @@
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             </div>
                             <div>
-                                <h4 class="font-bold text-slate-200 text-lg">${displayTitle}</h4>
-                                <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold truncate max-w-md" title="${subTitle}">${subTitle}</div>
+                                <h4 class="font-bold text-slate-200 text-lg">${App.escapeHtml(displayTitle)}</h4>
+                                <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold truncate max-w-md" title="${App.escapeHtml(subTitle)}">${App.escapeHtml(subTitle)}</div>
                             </div>
                         </div>
-                        <button onclick="showMappingHistoryForGroup('${groupKey}', '${bank}')" class="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-4 py-2 rounded-full border border-indigo-500/20 transition-all flex items-center gap-2 font-bold text-xs">
+                        <button onclick="showMappingHistoryForGroup(${App.jsArg(groupKey)}, ${App.jsArg(bank)})" class="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-4 py-2 rounded-full border border-indigo-500/20 transition-all flex items-center gap-2 font-bold text-xs">
                              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             History Options
                         </button>
@@ -561,7 +507,7 @@
                                             <th class="p-3 border-r border-slate-800 border-b-2 border-b-indigo-500/30 min-w-[200px] transition-colors ${isIgnored ? 'ignored-column-bg' : ''}">
                                                 <div class="flex items-center gap-1.5">
                                                     <select class="mapping-select w-full bg-slate-900/50 rounded-md border-slate-700 h-9 px-2 text-indigo-300 font-bold transition-all ${isIgnored ? 'ignored-select-text' : ''}" 
-                                                            data-raw="${col}" onchange="updateRowStyle(this)">
+                                                            data-raw="${App.escapeHtml(col)}" onchange="updateRowStyle(this)">
                                                         <option value="">-- Ignore --</option>
                                                         ${STANDARD_COLUMNS.map(std => `<option value="${std}" ${std === suggestion ? 'selected' : ''}>${std}</option>`).join('')}
                                                     </select>
@@ -585,13 +531,13 @@
                                         return `
                                             <th class="p-4 border-r border-slate-800 border-b border-white/5 text-slate-200 font-bold whitespace-nowrap">
                                                 <div class="flex flex-col">
-                                                    <span>${col}</span>
+                                                    <span>${App.escapeHtml(col)}</span>
                                                     <div class="tooltip mt-1">
                                                         <span class="text-[8px] text-slate-500 font-normal uppercase tracking-tighter border-b border-dashed border-slate-700 pb-0.5">${filledRows} Filled Rows</span>
                                                         <div class="tooltiptext">
                                                             <div class="font-bold text-indigo-300 mb-2 uppercase text-[9px] tracking-wider">Distinct Examples</div>
                                                             <div class="space-y-1">
-                                                                ${(mapInfo.distinct_samples[col] || []).map(s => `<div class="truncate bg-white/5 p-1 rounded border border-white/5">${s}</div>`).join('')}
+                                                                ${(mapInfo.distinct_samples[col] || []).map(s => `<div class="truncate bg-white/5 p-1 rounded border border-white/5">${App.escapeHtml(s)}</div>`).join('')}
                                                                 ${(mapInfo.distinct_samples[col] || []).length === 0 ? '<div class="text-slate-600 italic">No data</div>' : ''}
                                                             </div>
                                                         </div>
@@ -613,7 +559,7 @@
                                             const original_idx = mapInfo.headers_list.indexOf(col);
                                             const val = (mapInfo.sample_data && mapInfo.sample_data[row_idx]) ? mapInfo.sample_data[row_idx][original_idx] : '';
                                             return `
-                                                <td class="p-4 border-r border-slate-800 text-slate-400 font-mono truncate max-w-[200px]" title="${val}">${val}</td>
+                                                <td class="p-4 border-r border-slate-800 text-slate-400 font-mono truncate max-w-[200px]" title="${App.escapeHtml(val)}">${App.escapeHtml(val)}</td>
                                             `;
                                         }).join('')}
                                     </tr>
@@ -660,16 +606,16 @@
                     <div class="flex justify-between items-center mb-4">
                         <div class="flex items-center gap-3">
                             <span class="bg-indigo-600 text-[10px] font-bold px-2 py-1 rounded text-white">${cfg.count} Files Used This</span>
-                            <span class="text-slate-500 text-[10px] truncate max-w-[200px]">e.g. ${cfg.examples[0]}</span>
+                            <span class="text-slate-500 text-[10px] truncate max-w-[200px]">e.g. ${App.escapeHtml(cfg.examples[0])}</span>
                         </div>
-                        <button onclick="applyHistoryConfig('${targetFilename}', ${idx})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-all shadow-lg active:scale-95">
+                        <button onclick="applyHistoryConfig(${App.jsArg(targetFilename)}, ${idx})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-all shadow-lg active:scale-95">
                             Apply This Config
                         </button>
                     </div>
                     <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                         ${Object.entries(cfg.mapping).map(([raw, std]) => `
                             <div class="shrink-0 bg-slate-900/80 p-3 rounded-lg border border-slate-800 min-w-[120px]">
-                                <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1 truncate" title="${raw}">${raw}</div>
+                                <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1 truncate" title="${App.escapeHtml(raw)}">${App.escapeHtml(raw)}</div>
                                 <div class="text-xs text-indigo-400 font-bold">${std}</div>
                             </div>
                         `).join('')}
@@ -761,21 +707,51 @@
             summary.innerHTML = `Successfully processed <b>${data.pipeline_summary.files_processed}</b> files and merged <b>${data.pipeline_summary.total_rows_after_dedup}</b> transactions into the ledger.`;
 
             const reconDiv = document.getElementById('reconResults');
+            
+            // Check for potential backend errors in reconciliation
+            if (!data.recon_data || data.recon_data.error) {
+                reconDiv.innerHTML = `
+                    <div class="bg-rose-500/10 border border-rose-500/20 p-6 rounded-2xl mb-8 flex items-center gap-4">
+                        <div class="text-left">
+                            <div class="text-rose-400 font-bold text-lg">Reconciliation Error</div>
+                            <div class="text-slate-400 text-sm">${data.recon_data ? data.recon_data.error : 'Failed to generate reconciliation report.'}</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const bankLevel = data.recon_data.bank_level || [];
 
             // Sort: Inconsistencies first
-            const sortedBanks = [...data.recon_data.bank_level].sort((a, b) => {
-                const aInc = !a.Consistency.includes('Consistent');
-                const bInc = !b.Consistency.includes('Consistent');
+            const sortedBanks = [...bankLevel].sort((a, b) => {
+                const aInc = !(a.Consistency || '').includes('Consistent');
+                const bInc = !(b.Consistency || '').includes('Consistent');
                 return bInc - aInc;
             });
 
-            const sortedFiles = [...data.recon_data.per_file].sort((a, b) => {
-                const aInc = !a.Consistency.includes('Consistent');
-                const bInc = !b.Consistency.includes('Consistent');
+            // Flatten files from all banks for the detailed breakdown
+            const allFiles = [];
+            bankLevel.forEach(bank => {
+                if (bank.Files) {
+                    bank.Files.forEach(file => {
+                        allFiles.push({
+                            Name: file.filename,
+                            TotalCredit: file.TotalCredit || 0,
+                            TotalDebit: file.TotalDebit || 0,
+                            Consistency: file.Consistency || 'Unknown'
+                        });
+                    });
+                }
+            });
+
+            const sortedFiles = allFiles.sort((a, b) => {
+                const aInc = !(a.Consistency || '').includes('Consistent');
+                const bInc = !(b.Consistency || '').includes('Consistent');
                 return bInc - aInc;
             });
 
-            const anyInconsistency = sortedBanks.some(b => !b.Consistency.includes('Consistent'));
+            const anyInconsistency = sortedBanks.some(b => !(b.Consistency || '').includes('Consistent'));
             const successBanner = anyInconsistency ? '' : `
                 <div class="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-2xl mb-8 flex items-center gap-4 animate-in zoom-in duration-500">
                     <div class="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 shrink-0">
@@ -788,28 +764,34 @@
                 </div>
             `;
 
-            const bankRecs = sortedBanks.map(b => `
-                <div class="flex justify-between items-center p-4 bg-slate-900/40 rounded-lg border ${!b.Consistency.includes('Consistent') ? 'border-rose-500/30 bg-rose-500/5' : 'border-slate-800'}">
+            const bankRecs = sortedBanks.map(b => {
+                const cleanName = (b.Name || 'Unknown Bank').replace('All ', '').replace(' (Aggregate)', '');
+                const isConsistent = (b.Consistency || '').includes('Consistent');
+                
+                return `
+                <div class="flex justify-between items-center p-4 bg-slate-900/40 rounded-lg border ${!isConsistent ? 'border-rose-500/30 bg-rose-500/5' : 'border-slate-800'}">
                     <div>
-                        <div class="font-bold text-slate-200">${b.Name}</div>
+                        <div class="font-bold text-slate-200">${App.escapeHtml(cleanName)}</div>
                         <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">
-                             CR: ${b.TotalCredit.toLocaleString()} <span class="mx-1 opacity-30">|</span> DR: ${b.TotalDebit.toLocaleString()}
+                             CR: ${parseFloat(b.TotalCredit || 0).toLocaleString()} <span class="mx-1 opacity-30">|</span> DR: ${parseFloat(b.TotalDebit || 0).toLocaleString()}
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="text-sm ${b.Consistency.includes('Consistent') ? 'text-emerald-400' : 'text-rose-400'} font-black italic tracking-tight uppercase">${b.Consistency}</div>
+                        <div class="text-sm ${isConsistent ? 'text-emerald-400' : 'text-rose-400'} font-black italic tracking-tight uppercase">${b.Consistency || 'Incomplete'}</div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
 
-            const fileRecs = sortedFiles.map(f => `
-                <tr class="text-xs ${!f.Consistency.includes('Consistent') ? 'bg-rose-500/5' : ''}">
-                    <td class="py-3 px-2 text-slate-400 truncate max-w-[200px]" title="${f.Name}">${f.Name}</td>
-                    <td class="text-right px-2 text-slate-300 tabular-nums">${f.TotalCredit.toLocaleString()}</td>
-                    <td class="text-right px-2 text-slate-300 tabular-nums">${f.TotalDebit.toLocaleString()}</td>
-                    <td class="text-right px-2 font-bold ${f.Consistency.includes('Consistent') ? 'text-emerald-500' : 'text-rose-400'}">${f.Consistency}</td>
+            const fileRecs = sortedFiles.map(f => {
+                const isConsistent = (f.Consistency || '').includes('Consistent');
+                return `
+                <tr class="text-xs ${!isConsistent ? 'bg-rose-500/5' : ''}">
+                    <td class="py-3 px-2 text-slate-400 truncate max-w-[200px]" title="${App.escapeHtml(f.Name)}">${App.escapeHtml(f.Name)}</td>
+                    <td class="text-right px-2 text-slate-300 tabular-nums">${parseFloat(f.TotalCredit || 0).toLocaleString()}</td>
+                    <td class="text-right px-2 text-slate-300 tabular-nums">${parseFloat(f.TotalDebit || 0).toLocaleString()}</td>
+                    <td class="text-right px-2 font-bold ${isConsistent ? 'text-emerald-500' : 'text-rose-400'}">${f.Consistency || 'Processed'}</td>
                 </tr>
-            `).join('');
+            `}).join('');
 
             reconDiv.innerHTML = `
                 ${successBanner}

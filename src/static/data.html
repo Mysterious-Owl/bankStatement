@@ -6,53 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transaction Data Grid</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
     <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-deep: #020617;
-            --bg-card: #0f172a;
-            --bg-card-hover: #1e293b;
-            --accent-primary: #3b82f6;
-            --accent-secondary: #8b5cf6;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --border-color: #334155;
-        }
-
-        body {
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-deep);
-            color: var(--text-primary);
-            overflow-x: hidden;
-        }
-
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-color);
-            border-radius: 1rem;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 10px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #475569;
-        }
-
         .table-container {
             position: relative;
             border-radius: 0.75rem;
@@ -69,7 +28,7 @@
         th {
             position: sticky;
             top: 0;
-            background: #1e293b;
+            background: #2c2c2e;
             color: var(--text-secondary);
             font-weight: 600;
             text-transform: uppercase;
@@ -83,28 +42,13 @@
 
         td {
             padding: 0.75rem;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            border-bottom: 1px solid rgba(58, 58, 60, 0.5);
             font-size: 0.875rem;
             transition: background 0.2s ease;
         }
 
         tr:hover td {
-            background: rgba(30, 41, 59, 0.5);
-        }
-
-        input,
-        select {
-            background: #0f172a;
-            border: 1px solid #334155;
-            color: #f8fafc;
-            transition: all 0.2s ease;
-        }
-
-        input:focus,
-        select:focus {
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-            outline: none;
+            background: rgba(44, 44, 46, 0.5);
         }
 
         .badge {
@@ -112,10 +56,6 @@
             border-radius: 9999px;
             font-size: 0.7rem;
             font-weight: 600;
-        }
-
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
         }
 
         /* Side Drawer */
@@ -141,7 +81,7 @@
         /* Row Details Expansion */
         .row-details {
             display: none;
-            background: rgba(15, 23, 42, 0.4);
+            background: rgba(28, 28, 30, 0.4);
         }
 
         .row-details.expanded {
@@ -156,107 +96,250 @@
             transform: rotate(90deg);
         }
 
-        .gradient-text {
-            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
         /* Autocomplete Dropdown */
         .autocomplete-container {
             position: relative;
         }
 
-        .autocomplete-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: #0f172a;
-            border: 1px solid #1e293b;
-            border-top: none;
-            border-radius: 0 0 8px 8px;
-            max-height: 200px;
+
+
+
+
+        /* --- Excel-style editable grid --------------------------------- */
+        .grid-mode table {
+            table-layout: auto;
+        }
+
+        .grid-mode td {
+            padding: 0;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.78rem;
+            height: 30px;
+            vertical-align: middle;
+        }
+
+        .grid-mode th {
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.5rem 0.6rem;
+        }
+
+        .grid-mode tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .grid-cell {
+            padding: 4px 8px;
+            min-height: 30px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            outline: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* The focused cell, keyboard-navigable like a spreadsheet */
+        .grid-cell.is-active {
+            box-shadow: inset 0 0 0 2px var(--accent-primary);
+            border-radius: 3px;
+            background: rgba(10, 132, 255, 0.08);
+        }
+
+        .grid-cell.is-editable {
+            cursor: text;
+        }
+
+        .grid-cell.is-editable:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .grid-cell-placeholder {
+            color: var(--text-tertiary);
+            font-style: italic;
+        }
+
+        .grid-editor {
+            width: 100%;
+            background: var(--bg-elevated);
+            border: 2px solid var(--accent-primary);
+            border-radius: 3px;
+            padding: 3px 6px;
+            font-size: 0.78rem;
+            color: var(--text-primary);
+            outline: none;
+        }
+
+        .grid-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 7px;
+            border-radius: 980px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            background: rgba(10, 132, 255, 0.16);
+            border: 1px solid rgba(10, 132, 255, 0.35);
+            color: #6cb2ff;
+            white-space: nowrap;
+        }
+
+        /* Tags inherited from a rule/category rather than typed by hand */
+        .grid-tag.is-inherited {
+            background: rgba(191, 90, 242, 0.14);
+            border-color: rgba(191, 90, 242, 0.32);
+            color: #d9a2f7;
+        }
+
+        .grid-tag .x {
+            cursor: pointer;
+            opacity: 0.5;
+        }
+
+        .grid-tag .x:hover {
+            opacity: 1;
+        }
+
+        .grid-suggest {
+            position: fixed;
+            z-index: 300;
+            min-width: 200px;
+            max-height: 220px;
             overflow-y: auto;
-            z-index: 100;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            background: rgba(28, 28, 30, 0.95);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--border-color-strong);
+            border-radius: 0.6rem;
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7);
             display: none;
         }
 
-        .autocomplete-item {
-            padding: 8px 12px;
-            font-size: 12px;
-            color: #94a3b8;
+        .grid-suggest.show {
+            display: block;
+        }
+
+        .grid-suggest-item {
+            padding: 6px 10px;
+            font-size: 0.75rem;
             cursor: pointer;
-            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
         }
 
-        .autocomplete-item:hover {
-            background: #1e293b;
+        .grid-suggest-item.active,
+        .grid-suggest-item:hover {
+            background: var(--accent-primary);
             color: #fff;
         }
 
-        .autocomplete-item.selected {
-            background: #3b82f6;
-            color: #fff;
+        .grid-suggest-item .hint {
+            opacity: 0.5;
+            font-size: 0.65rem;
+        }
+
+        /* --- Audit state ------------------------------------------------ */
+        .review-toggle {
+            width: 1.375rem;
+            height: 1.375rem;
+            border-radius: 0.375rem;
+            border: 1px solid var(--border-color-strong);
+            color: transparent;
+            font-size: 0.75rem;
+            line-height: 1;
+            transition: all 0.15s var(--ease-apple);
+        }
+
+        .review-toggle:hover { color: var(--text-tertiary); }
+
+        .review-toggle.is-on {
+            background: rgba(48, 209, 88, 0.18);
+            border-color: rgba(48, 209, 88, 0.5);
+            color: #30d158;
+        }
+
+        .audit-flag {
+            display: inline-block;
+            margin-right: 0.375rem;
+            padding: 0 0.375rem;
+            border-radius: 999px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-decoration: none;
+            vertical-align: middle;
+        }
+
+        .audit-flag.is-ignored { background: rgba(255, 159, 10, 0.16); color: #ff9f0a; }
+        .audit-flag.is-reviewed { background: rgba(48, 209, 88, 0.16); color: #30d158; }
+
+        /* Dim everything but the selection and review controls. */
+        tr.is-ignored-row td:nth-child(n+3) { opacity: 0.5; }
+
+        .bulk-bar {
+            position: sticky;
+            bottom: 1rem;
+            z-index: 40;
+        }
+
+        .transfer-flag {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            color: #64d2ff;
         }
     </style>
 </head>
 
-<body class="p-4 md:p-8 min-h-screen">
+<body class="min-h-screen">
+
+
+    <div class="page-content p-4 md:p-8">
 
     <!-- Header Area -->
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+    <header class="page-hero flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-            <h1 class="text-4xl font-bold tracking-tight gradient-text">Transaction Explorer</h1>
-            <p class="text-slate-400 mt-1 font-light">Deep analysis of consolidated bank statements</p>
+            <h1>Transaction Explorer</h1>
+            <p>Deep analysis of consolidated bank statements</p>
         </div>
-        <nav class="flex items-center gap-3">
-            <a href="/"
-                class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                <span>Dashboard</span>
-            </a>
-            <a href="/rules"
-                class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                <span>Rules</span>
-            </a>
-            <a href="/reconcile"
-                class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium flex items-center gap-2">
-                <span>Reconcile</span>
-            </a>
-            <a href="/upload"
-                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                Upload Statements
-            </a>
-            <button onclick="toggleDrawer()"
-                class="glass-panel px-4 py-2 hover:bg-slate-800 transition-all font-medium text-slate-400 border-dashed">
-                Columns
-            </button>
-        </nav>
+        <button onclick="toggleDrawer()" class="btn-secondary">
+            Columns
+        </button>
     </header>
 
     <!-- Filter & Stats Deck -->
     <div class="glass-panel p-6 mb-8">
         <div class="flex flex-col lg:flex-row gap-6">
             <!-- Filter Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-1">
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 flex-1">
                 <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bank</label>
                     <select id="bankFilter" onchange="applyFilters()"
                         class="w-full h-9 px-3 rounded-lg text-xs bg-slate-900 border-slate-700">
-                        <option value="">All Institutions</option>
+                        <option value="">All banks</option>
                     </select>
                 </div>
                 <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Category</label>
                     <select id="categoryFilter" onchange="applyFilters()"
                         class="w-full h-9 px-3 rounded-lg text-xs bg-slate-900 border-slate-700">
-                        <option value="">Any Category</option>
+                        <option value="">All categories</option>
                         <option value="__unmatched__">Unmatched Only</option>
                     </select>
                 </div>
                 <div class="space-y-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Review</label>
+                    <select id="reviewFilter" onchange="applyFilters()"
+                        class="w-full h-9 px-3 rounded-lg text-xs bg-slate-900 border-slate-700">
+                        <option value="">All rows</option>
+                        <option value="unreviewed">Not reviewed</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="ignored">Ignored (duplicates)</option>
+                    </select>
+                </div>
+                <div class="space-y-1.5 md:col-span-2 lg:col-span-2">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Timeline</label>
                     <div class="flex gap-1">
                         <input type="date" id="startDate" onchange="applyFilters()"
@@ -266,11 +349,10 @@
                     </div>
                 </div>
                 <div class="space-y-1.5">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tags (comma
-                        separated)</label>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tags</label>
                     <div class="autocomplete-container">
                         <input type="text" id="tagFilter" oninput="handleTagFilterInput(event)"
-                            placeholder="Filter tags..."
+                            placeholder="tag1, tag2"
                             class="w-full h-9 px-3 rounded-lg text-xs bg-slate-900 border-slate-700">
                         <div id="tagAutocompleteDropdown" class="autocomplete-dropdown custom-scrollbar"></div>
                     </div>
@@ -323,7 +405,15 @@
 
     <!-- Pagination Controls -->
     <div class="flex justify-between items-center mb-4 px-2">
-        <div class="flex items-center gap-2 text-sm text-slate-400">
+        <div class="flex items-center gap-4">
+            <!-- View mode: read-only cards vs. spreadsheet-style editing -->
+            <div class="flex items-center gap-1 bg-slate-900/70 border border-slate-800 rounded-full p-1">
+                <button id="viewBtn-cards" onclick="setViewMode('cards')"
+                    class="px-3 py-1 rounded-full text-xs font-semibold transition-all">Cards</button>
+                <button id="viewBtn-grid" onclick="setViewMode('grid')"
+                    class="px-3 py-1 rounded-full text-xs font-semibold transition-all">Edit grid</button>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-slate-400">
             <span>Show</span>
             <select id="pageSize" onchange="changePageSize()"
                 class="bg-slate-900 border-slate-700 rounded px-2 py-1 text-xs">
@@ -332,6 +422,7 @@
                 <option value="500">500</option>
             </select>
             <span>rows per page</span>
+            </div>
         </div>
         <div class="flex items-center gap-4">
             <div class="flex items-center gap-1">
@@ -370,7 +461,7 @@
     </div>
 
     <!-- Data Table Container -->
-    <div class="table-container glass-panel shadow-2xl">
+    <div id="tableContainer" class="table-container glass-panel shadow-2xl">
         <div class="overflow-x-auto custom-scrollbar" style="max-height: 75vh;">
             <table id="dataTable">
                 <thead id="tableHeader">
@@ -396,11 +487,80 @@
         </div>
     </div>
 
+    <!-- Orphaned annotations: tags/remarks whose transaction is no longer in
+         the ledger. Surfaced here so manual work is never silently lost. -->
+    <div id="orphanNotice" class="hidden mb-4">
+        <div class="glass-panel px-4 py-3 flex items-center gap-3 border border-amber-500/30 bg-amber-500/5">
+            <span class="text-amber-400 font-bold text-sm">⚠</span>
+            <span class="text-xs text-slate-300">
+                <span id="orphanCount">0</span> saved annotation(s) no longer match any transaction —
+                usually after a re-upload changed how a row was parsed.
+            </span>
+            <button onclick="openOrphanModal()" class="btn-secondary ml-auto" style="padding:0.3rem 0.9rem;font-size:0.7rem">
+                Review &amp; re-link
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk actions: appears once rows are selected in the edit grid -->
+    <div id="bulkBar" class="bulk-bar hidden mt-4">
+        <div class="glass-panel px-4 py-3 flex flex-wrap items-center gap-3">
+            <span class="text-xs font-bold text-slate-300"><span id="bulkCount">0</span> selected</span>
+            <div class="relative">
+                <input id="bulkTagInput" type="text" placeholder="Add tag to all..."
+                    class="h-8 px-3 rounded-lg text-xs w-52"
+                    oninput="showSuggestions(this, 'bulk')"
+                    onkeydown="handleBulkTagKey(event)">
+            </div>
+            <button onclick="applyBulkTag()" class="btn-primary" style="padding:0.35rem 1rem;font-size:0.75rem">
+                Apply tag
+            </button>
+            <div class="h-5 w-px bg-slate-700"></div>
+            <input id="bulkRemarkInput" type="text" placeholder="Set remark on all..."
+                class="h-8 px-3 rounded-lg text-xs w-64">
+            <button onclick="applyBulkRemark()" class="btn-secondary" style="padding:0.35rem 1rem;font-size:0.75rem">
+                Apply remark
+            </button>
+            <div class="h-5 w-px bg-slate-700"></div>
+            <button onclick="setReviewed([...selectedKeys], true)" class="btn-secondary" style="padding:0.35rem 1rem;font-size:0.75rem">
+                Mark reviewed
+            </button>
+            <button onclick="setReviewed([...selectedKeys], false)" class="text-xs text-slate-400 hover:text-white">
+                Unmark
+            </button>
+            <button onclick="clearSelection()" class="ml-auto text-xs text-slate-400 hover:text-white">
+                Clear selection
+            </button>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- Shared autocomplete popup for tag entry (positioned next to the editor) -->
+    <div id="gridSuggest" class="grid-suggest"></div>
+
+    <!-- Orphan re-link modal -->
+    <div id="orphanModal" class="fixed inset-0 z-[200] hidden items-center justify-center p-4"
+         style="background:rgba(0,0,0,.7);backdrop-filter:blur(8px)">
+        <div class="glass-panel w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold">Re-link saved annotations</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Pick the transaction each note or tag belongs to, or discard it.
+                    </p>
+                </div>
+                <button onclick="closeOrphanModal()" class="text-slate-400 hover:text-white p-2">✕</button>
+            </div>
+            <div id="orphanList" class="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar"></div>
+        </div>
+    </div>
+
     <!-- Column Selection Drawer -->
     <div id="drawerOverlay" onclick="toggleDrawer()"
         class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity"></div>
     <div id="sideDrawer"
-        class="fixed top-0 right-0 w-80 h-full bg-slate-900 border-l border-slate-700 z-50 shadow-2xl closed flex flex-col">
+        class="fixed top-0 right-0 w-80 h-full bg-slate-900/90 backdrop-blur-2xl border-l border-slate-800 z-50 shadow-2xl closed flex flex-col">
         <div class="p-6 border-b border-slate-800 flex justify-between items-center">
             <h2 class="text-xl font-bold">Preferences</h2>
             <button onclick="toggleDrawer()" class="text-slate-400 hover:text-white">
@@ -470,7 +630,7 @@
             totalPages: 1
         };
 
-        const currencyFormatter = new Intl.NumberFormat('en-IN', { style: 'decimal', minimumFractionDigits: 2 });
+        const currencyFormatter = App.decimal;
 
         async function init() {
             // Load Settings
@@ -485,9 +645,19 @@
             // Detect Dynamic Columns
             detectDynamicColumns();
 
+            // Restore the saved view mode before the first render so the grid
+            // doesn't flash the card layout on load.
+            updateViewButtons();
+            document.getElementById('tableContainer').classList.toggle('grid-mode', viewMode === 'grid');
+
+            applyUrlFilters();
+
             // Initial Render
             applyFilters();
             renderColumnControls();
+
+            // Surface any manual work that lost its transaction
+            checkOrphans();
         }
 
         function loadSettings() {
@@ -527,6 +697,13 @@
                     Object.keys(t).forEach(k => {
                         normalized[k.toLowerCase()] = t[k];
                     });
+
+                    // A few source columns (RefNumber, SourceFile, SystemRemarks) are PascalCase
+                    // with no underscore, so plain toLowerCase() doesn't match the snake_case
+                    // keys (ref_number, source_file, system_remarks) used elsewhere on this page.
+                    normalized.ref_number = normalized.refnumber;
+                    normalized.source_file = normalized.sourcefile;
+                    normalized.system_remarks = normalized.systemremarks;
 
                     // Standardize date to YYYY-MM-DD for simpler filtering
                     if (normalized.date && typeof normalized.date === 'string') {
@@ -581,7 +758,7 @@
             }
 
             dropdown.innerHTML = matches.map(m => `
-                <div class="autocomplete-item" onclick="selectTagFilter('${m}')">${m}</div>
+                <div class="autocomplete-item" onclick="selectTagFilter(${App.jsArg(m)})">${m}</div>
             `).join('');
             dropdown.style.display = 'block';
         }
@@ -625,14 +802,54 @@
             });
         }
 
+        /* Other pages deep-link here: the Audit page's balance breaks open
+           ?bank=&start=&end=, and its review section opens ?review=unreviewed.
+           Applied after populateFilters so they override the 12-month default. */
+        function applyUrlFilters() {
+            const params = new URLSearchParams(window.location.search);
+            const set = (id, value) => { if (value != null) document.getElementById(id).value = value; };
+            set('bankFilter', params.get('bank'));
+            set('reviewFilter', params.get('review'));
+            set('searchInput', params.get('search'));
+            if (params.has('start') || params.has('end')) {
+                set('startDate', params.get('start') || '');
+                set('endDate', params.get('end') || '');
+            } else if (params.has('review')) {
+                // Review work spans the whole ledger, not just the last year.
+                set('startDate', '');
+                set('endDate', '');
+            }
+            // ?view=grid opens the edit grid, where bulk review lives. Not
+            // persisted: following a link shouldn't change your default view.
+            const view = params.get('view');
+            if (view === 'grid' || view === 'cards') {
+                viewMode = view;
+                updateViewButtons();
+                document.getElementById('tableContainer').classList.toggle('grid-mode', view === 'grid');
+            }
+        }
+
+        function auditBadges(row) {
+            let html = '';
+            if (row.is_ignored) {
+                html += `<span class="audit-flag is-ignored" title="Ignored (${escapeHtml(row.ignored_reason || 'duplicate')}) -- left out of every total">ignored</span>`;
+            }
+            if (row.is_reviewed) {
+                html += `<span class="audit-flag is-reviewed" title="Reviewed">✓</span>`;
+            }
+            return html;
+        }
+
         function populateFilters() {
-            bankSelect.innerHTML = '<option value="">All Institutions</option>' +
-                banks.map(b => `<option value="${b}">${b}</option>`).join('');
+            const bankSelect = document.getElementById('bankFilter');
+            const banks = [...new Set(allData.map(t => t.bank))].filter(Boolean).sort();
+            bankSelect.innerHTML = '<option value="">All banks</option>' +
+                banks.map(b => `<option value="${App.escapeHtml(b)}">${App.escapeHtml(b)}</option>`).join('');
 
             const catSelect = document.getElementById('categoryFilter');
             const categories = [...new Set(allData.map(t => t.matched_category))].filter(Boolean).sort();
-            catSelect.innerHTML = '<option value="">Any Category</option><option value="__unmatched__">Unmatched Only</option>' +
-                categories.map(c => `<option value="${c}">${c}</option>`).join('');
+            catSelect.innerHTML = '<option value="">All categories</option><option value="__unmatched__">Unmatched Only</option>' +
+                categories.map(c => `<option value="${App.escapeHtml(c)}">${App.escapeHtml(c)}</option>`).join('');
 
             const dateValues = allData.map(t => t.date).filter(d => d && d !== 'null').sort();
             if (dateValues.length) {
@@ -726,6 +943,8 @@
         }
 
         function generateTableHeaders() {
+            if (viewMode === 'grid') return generateGridHeaders();
+
             const headerRow = document.createElement('tr');
 
             // Expand Button Placeholder
@@ -764,6 +983,7 @@
             const start = document.getElementById('startDate').value;
             const end = document.getElementById('endDate').value;
             const search = document.getElementById('searchInput').value.toLowerCase();
+            const review = document.getElementById('reviewFilter').value;
 
             // Split and clean tags for filtering
             const tagsToFilter = tagValue ? tagValue.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
@@ -772,6 +992,10 @@
                 if (bank && t.bank !== bank) return false;
                 if (category === '__unmatched__' && t.matched_category && t.matched_category !== 'Uncategorized') return false;
                 if (category && category !== '__unmatched__' && t.matched_category !== category) return false;
+
+                if (review === 'unreviewed' && (t.is_reviewed || t.is_ignored)) return false;
+                if (review === 'reviewed' && !t.is_reviewed) return false;
+                if (review === 'ignored' && !t.is_ignored) return false;
 
                 if (tagsToFilter.length > 0) {
                     if (!t.tags) return false;
@@ -813,7 +1037,12 @@
 
                 if (valA < valB) return sortState.asc ? -1 : 1;
                 if (valA > valB) return sortState.asc ? 1 : -1;
-                return 0;
+                
+                // Secondary Sort: SortIndex (Ensures stable order for same-day/duplicate values)
+                const idxA = a.sortindex || 0;
+                const idxB = b.sortindex || 0;
+                const diff = idxA - idxB;
+                return sortState.asc ? diff : -diff;
             });
 
             paginationState.totalPages = Math.ceil(filteredData.length / paginationState.pageSize) || 1;
@@ -825,6 +1054,8 @@
         }
 
         function renderTable() {
+            if (viewMode === 'grid') return renderGridTable();
+
             const tbody = document.getElementById('tableBody');
 
             if (filteredData.length === 0) {
@@ -857,21 +1088,22 @@
 
                     if (key === 'matched_category') {
                         if (row.matched_category) {
-                            return `<td><span class="badge" style="background: ${row.matched_category_color}15; color: ${row.matched_category_color}; border: 1px solid ${row.matched_category_color}40">${row.matched_category}</span></td>`;
+                            return `<td><span class="badge" style="background: ${row.matched_category_color}15; color: ${row.matched_category_color}; border: 1px solid ${row.matched_category_color}40">${App.escapeHtml(row.matched_category)}</span></td>`;
                         }
                         return `<td class="text-slate-600 text-[10px]">—</td>`;
                     }
 
                     if (key === 'tags') {
                         if (row.tags && row.tags.length > 0) {
-                            const tagChips = row.tags.map(tag => `<span class="inline-block px-2 py-0.5 mr-1 mb-1 text-[9px] bg-blue-600/20 border border-blue-500/30 rounded text-blue-300">${tag}</span>`).join('');
+                            const tagChips = row.tags.map(tag => `<span class="inline-block px-2 py-0.5 mr-1 mb-1 text-[9px] bg-blue-600/20 border border-blue-500/30 rounded text-blue-300">${App.escapeHtml(tag)}</span>`).join('');
                             return `<td class="max-w-xs">${tagChips}</td>`;
                         }
                         return `<td class="text-slate-600 text-[10px]">—</td>`;
                     }
 
                     if (key === 'description') {
-                        return `<td class="max-w-md truncate font-medium" title="${value}">${value}</td>`;
+                        const text = escapeHtml(value);
+                        return `<td class="max-w-md truncate font-medium ${row.is_ignored ? 'opacity-50 line-through' : ''}" title="${text}">${auditBadges(row)}${text}</td>`;
                     }
 
                     if (['debit', 'credit', 'balance'].includes(key)) {
@@ -885,7 +1117,7 @@
                     if (key === 'bank') classes.push('font-semibold text-xs tracking-wider opacity-80');
                     if (key === 'matched_rule') classes.push('text-[10px] opacity-70');
 
-                    return `<td class="${classes.join(' ')}">${value || ''}</td>`;
+                    return `<td class="${classes.join(' ')}">${App.escapeHtml(value || '')}</td>`;
                 }).join('')}
                     </tr>
                     <tr id="${rowId}" class="row-details">
@@ -896,11 +1128,11 @@
                                     <div class="space-y-2 text-sm text-slate-400">
                                         <div class="flex justify-between border-b border-slate-800 pb-1">
                                             <span>Source File</span>
-                                            <span class="text-slate-200">${row.source_file || '—'}</span>
+                                            <span class="text-slate-200">${App.escapeHtml(row.source_file || '—')}</span>
                                         </div>
                                         <div class="flex justify-between border-b border-slate-800 pb-1">
                                             <span>Reference No</span>
-                                            <span class="text-slate-200">${row.ref_number || '—'}</span>
+                                            <span class="text-slate-200">${App.escapeHtml(row.ref_number || '—')}</span>
                                         </div>
                                         <div class="flex justify-between border-b border-slate-800 pb-1">
                                             <span>Legacy Entity</span>
@@ -913,15 +1145,15 @@
                                     <div class="bg-slate-950 p-4 rounded-lg border border-slate-800">
                                         ${row.matched_rule ? `
                                             <div class="flex items-center gap-2 mb-3">
-                                                <span class="text-blue-400 font-bold">${row.matched_rule}</span>
+                                                <span class="text-blue-400 font-bold">${App.escapeHtml(row.matched_rule)}</span>
                                                 <span class="text-slate-600">→</span>
-                                                <span class="badge" style="background: ${row.matched_category_color}15; color: ${row.matched_category_color}">${row.matched_category}</span>
+                                                <span class="badge" style="background: ${row.matched_category_color}15; color: ${row.matched_category_color}">${App.escapeHtml(row.matched_category)}</span>
                                             </div>
                                             <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                                                 ${Object.entries(row.extracted_fields || {}).map(([k, v]) => `
                                                     <div class="p-2 bg-slate-900/50 rounded flex flex-col">
                                                         <span class="text-[10px] uppercase text-slate-500 font-bold tracking-tighter">${k}</span>
-                                                        <span class="text-sm mono text-indigo-300 truncate" title="${v}">${v}</span>
+                                                        <span class="text-sm mono text-indigo-300 truncate" title="${App.escapeHtml(v)}">${App.escapeHtml(v)}</span>
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -947,7 +1179,7 @@
                                          ${row.system_remarks ? `
                                             <div class="mt-4 p-3 bg-slate-900/30 border-l-2 border-slate-700 rounded-r-lg">
                                                 <h5 class="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Automated System Remarks</h5>
-                                                <p class="text-xs text-slate-400 italic">${row.system_remarks}</p>
+                                                <p class="text-xs text-slate-400 italic">${App.escapeHtml(row.system_remarks)}</p>
                                             </div>
                                          ` : ''}
                                      </div>
@@ -1020,6 +1252,619 @@
                 btn.disabled = false;
                 btn.textContent = 'Retry Save';
             }
+        }
+
+        /* ==================================================================
+           Excel-style edit grid
+           ------------------------------------------------------------------
+           A dense, keyboard-driven view for the actual annotation work:
+           tagging and writing remarks against many rows quickly. Editing
+           lives here rather than in the expandable card view because that
+           required a click, a scroll and a Save button per transaction.
+           ================================================================== */
+
+        let viewMode = localStorage.getItem('dataViewMode') || 'cards';
+        let selectedKeys = new Set();
+        let activeCell = null;      // {rowIdx, field} -- the focused cell
+        let editingCell = null;     // {rowIdx, field} -- the cell being typed into
+        let suggest = { items: [], index: 0, input: null, onPick: null };
+
+        // Columns that can be edited in place. Everything else is read-only.
+        const EDITABLE_FIELDS = ['tags', 'manual_remarks'];
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            localStorage.setItem('dataViewMode', mode);
+            activeCell = null;
+            editingCell = null;
+            hideSuggestions();
+            if (mode !== 'grid') clearSelection();
+            updateViewButtons();
+            document.getElementById('tableContainer').classList.toggle('grid-mode', mode === 'grid');
+            generateTableHeaders();
+            renderTable();
+        }
+
+        function updateViewButtons() {
+            ['cards', 'grid'].forEach(m => {
+                const btn = document.getElementById(`viewBtn-${m}`);
+                if (!btn) return;
+                const active = viewMode === m;
+                btn.style.background = active ? 'rgba(255,255,255,0.12)' : 'transparent';
+                btn.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
+            });
+        }
+
+        /**
+         * Read-only columns the user has chosen, plus the two editable ones,
+         * which are forced in so the grid is always usable for annotation
+         * regardless of saved column preferences.
+         */
+        function gridColumns() {
+            const cols = Object.entries(columnState)
+                .filter(([key, c]) => c.visible && !EDITABLE_FIELDS.includes(key));
+            return [
+                ...cols,
+                ['tags', columnState.tags || { label: 'Tags' }],
+                ['manual_remarks', columnState.manual_remarks || { label: 'Remarks' }],
+            ];
+        }
+
+        function generateGridHeaders() {
+            const allOnPage = currentPageData();
+            const allSelected = allOnPage.length > 0 && allOnPage.every(r => selectedKeys.has(r.anno_key));
+
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = `
+                <th class="w-8 text-center">
+                    <input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleSelectPage(this.checked)"
+                           class="w-3.5 h-3.5" title="Select all rows on this page">
+                </th>
+                <th class="w-10 text-center" title="Reviewed">Rev.</th>
+                ${gridColumns().map(([key, config]) => `
+                    <th class="${EDITABLE_FIELDS.includes(key) ? 'text-blue-300' : 'cursor-pointer hover:bg-slate-700'}"
+                        ${EDITABLE_FIELDS.includes(key) ? '' : `onclick="setSort('${key}')"`}>
+                        <div class="flex items-center gap-1.5">
+                            <span>${config.label}</span>
+                            ${EDITABLE_FIELDS.includes(key)
+                                ? '<span class="text-[8px] uppercase tracking-wider opacity-60">edit</span>'
+                                : (sortState.key === key
+                                    ? `<svg class="w-3 h-3 text-blue-400 ${sortState.asc ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7"/></svg>`
+                                    : '')}
+                        </div>
+                    </th>
+                `).join('')}
+            `;
+            document.getElementById('tableHeader').replaceChildren(headerRow);
+        }
+
+        function currentPageData() {
+            const start = (paginationState.page - 1) * paginationState.pageSize;
+            return filteredData.slice(start, start + paginationState.pageSize);
+        }
+
+        const escapeHtml = App.escapeHtml;
+
+        function renderGridTable() {
+            const tbody = document.getElementById('tableBody');
+            const pageData = currentPageData();
+
+            if (pageData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="100" class="py-20 text-center text-slate-500 font-light">No records match your criteria.</td></tr>`;
+                return;
+            }
+
+            const columns = gridColumns();
+            tbody.innerHTML = pageData.map((row, rowIdx) => {
+                const key = row.anno_key || '';
+                const isSelected = selectedKeys.has(key);
+                return `
+                    <tr data-row="${rowIdx}" class="${isSelected ? 'bg-blue-500/10' : ''} ${row.is_ignored ? 'is-ignored-row' : ''}">
+                        <td class="w-8 text-center">
+                            <input type="checkbox" ${isSelected ? 'checked' : ''} class="w-3.5 h-3.5"
+                                   onchange="toggleRowSelection('${key}', this.checked)">
+                        </td>
+                        <td class="w-10 text-center">
+                            <button class="review-toggle ${row.is_reviewed ? 'is-on' : ''}"
+                                    title="${row.is_reviewed ? 'Reviewed -- click to unmark' : 'Mark reviewed'}"
+                                    onclick="setReviewed(['${key}'], ${!row.is_reviewed})">✓</button>
+                        </td>
+                        ${columns.map(([colKey, config]) => renderGridCell(row, rowIdx, colKey, config)).join('')}
+                    </tr>
+                `;
+            }).join('');
+
+            restoreActiveCell();
+        }
+
+        function renderGridCell(row, rowIdx, colKey, config) {
+            const key = row.anno_key || '';
+            const isActive = activeCell && activeCell.rowIdx === rowIdx && activeCell.field === colKey;
+            const activeClass = isActive ? 'is-active' : '';
+
+            if (colKey === 'tags') {
+                const tags = row.tags || [];
+                const sources = row.tag_sources || {};
+                const chips = tags.map(tag => `
+                    <span class="grid-tag ${sources[tag] && sources[tag] !== 'manual' ? 'is-inherited' : ''}"
+                          title="${sources[tag] === 'manual' ? 'Added manually' : 'Inherited from ' + (sources[tag] || 'rule') + ' -- removing affects only this transaction'}">
+                        ${escapeHtml(tag)}<span class="x" onclick="event.stopPropagation(); removeTagFromRow('${key}', ${JSON.stringify(tag).replace(/"/g, '&quot;')})">×</span>
+                    </span>
+                `).join('');
+                return `<td>
+                    <div class="grid-cell is-editable ${activeClass}" data-row="${rowIdx}" data-field="tags"
+                         onclick="beginEdit(${rowIdx}, 'tags')">
+                        ${chips || '<span class="grid-cell-placeholder">+ tag</span>'}
+                    </div>
+                </td>`;
+            }
+
+            if (colKey === 'manual_remarks') {
+                const text = row.manual_remarks || '';
+                return `<td>
+                    <div class="grid-cell is-editable ${activeClass}" data-row="${rowIdx}" data-field="manual_remarks"
+                         onclick="beginEdit(${rowIdx}, 'manual_remarks')" title="${escapeHtml(text)}">
+                        ${text ? escapeHtml(text) : '<span class="grid-cell-placeholder">add note…</span>'}
+                    </div>
+                </td>`;
+            }
+
+            // Read-only cells
+            let value = (config.type === 'rule')
+                ? (row.extracted_fields ? row.extracted_fields[config.field] : '')
+                : row[colKey];
+
+            let extra = '';
+            let cls = '';
+
+            if (['debit', 'credit', 'balance'].includes(colKey)) {
+                cls = 'justify-end mono tabular-nums';
+                value = value ? currencyFormatter.format(value) : '';
+                if (colKey === 'debit' && value) cls += ' text-rose-400';
+                if (colKey === 'credit' && value) cls += ' text-emerald-400';
+            }
+            if (colKey === 'matched_category' && value) {
+                const color = row.matched_category_color || '#8e8e93';
+                return `<td><div class="grid-cell ${activeClass}"><span class="badge" style="background:${color}20;color:${color}">${escapeHtml(value)}</span></div></td>`;
+            }
+            if (colKey === 'description' && row.is_self_transfer) {
+                // Self transfers are excluded from income/expense, so flag them
+                // here rather than leaving the row looking like ordinary spend.
+                extra = `<span class="transfer-flag" title="Self transfer ${row.transfer_direction === 'out' ? 'to' : 'from'} ${escapeHtml(row.transfer_counterparty || '')} -- excluded from income/expense">⇄</span>`;
+            }
+            if (colKey === 'description' && row.is_ignored) {
+                extra += auditBadges({ is_ignored: true, ignored_reason: row.ignored_reason });
+            }
+
+            return `<td><div class="grid-cell ${cls} ${activeClass}">${extra}${escapeHtml(value ?? '')}</div></td>`;
+        }
+
+        // --- Selection --------------------------------------------------
+
+        function toggleRowSelection(key, checked) {
+            if (checked) selectedKeys.add(key); else selectedKeys.delete(key);
+            updateBulkBar();
+            renderGridTable();
+        }
+
+        function toggleSelectPage(checked) {
+            currentPageData().forEach(row => {
+                if (checked) selectedKeys.add(row.anno_key); else selectedKeys.delete(row.anno_key);
+            });
+            updateBulkBar();
+            generateGridHeaders();
+            renderGridTable();
+        }
+
+        function clearSelection() {
+            selectedKeys.clear();
+            updateBulkBar();
+            if (viewMode === 'grid') { generateGridHeaders(); renderGridTable(); }
+        }
+
+        function updateBulkBar() {
+            const bar = document.getElementById('bulkBar');
+            document.getElementById('bulkCount').textContent = selectedKeys.size;
+            bar.classList.toggle('hidden', selectedKeys.size === 0);
+        }
+
+        // --- Cell focus & editing ---------------------------------------
+
+        function cellEl(rowIdx, field) {
+            return document.querySelector(`.grid-cell[data-row="${rowIdx}"][data-field="${field}"]`);
+        }
+
+        function restoreActiveCell() {
+            if (!activeCell) return;
+            const el = cellEl(activeCell.rowIdx, activeCell.field);
+            if (el) el.classList.add('is-active');
+        }
+
+        function beginEdit(rowIdx, field) {
+            activeCell = { rowIdx, field };
+            editingCell = { rowIdx, field };
+
+            const el = cellEl(rowIdx, field);
+            if (!el) return;
+            const row = currentPageData()[rowIdx];
+            if (!row) return;
+
+            if (field === 'tags') {
+                const existing = el.innerHTML.includes('grid-cell-placeholder') ? '' : el.innerHTML;
+                el.innerHTML = `${existing}<input class="grid-editor" style="width:110px" placeholder="tag…">`;
+                const input = el.querySelector('input');
+                input.focus();
+                input.oninput = () => showSuggestions(input, 'cell');
+                input.onkeydown = (e) => handleTagCellKey(e, row, input);
+                input.onblur = () => { setTimeout(() => { if (editingCell) endEdit(); }, 150); };
+            } else {
+                el.innerHTML = `<input class="grid-editor" value="${escapeHtml(row.manual_remarks || '')}" placeholder="note…">`;
+                const input = el.querySelector('input');
+                input.focus();
+                input.select();
+                input.onkeydown = async (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        await saveRemarkForKey(row.anno_key, input.value);
+                        endEdit();
+                        moveActive(1, 0);
+                    } else if (e.key === 'Escape') {
+                        endEdit();
+                    } else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        saveRemarkForKey(row.anno_key, input.value).then(() => endEdit());
+                    }
+                };
+                input.onblur = async () => {
+                    if (!editingCell) return;
+                    await saveRemarkForKey(row.anno_key, input.value);
+                    endEdit();
+                };
+            }
+        }
+
+        function endEdit() {
+            editingCell = null;
+            hideSuggestions();
+            renderGridTable();
+        }
+
+        async function handleTagCellKey(event, row, input) {
+            if (suggest.items.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+                event.preventDefault();
+                suggest.index += event.key === 'ArrowDown' ? 1 : -1;
+                if (suggest.index < 0) suggest.index = suggest.items.length - 1;
+                if (suggest.index >= suggest.items.length) suggest.index = 0;
+                paintSuggestions();
+                return;
+            }
+
+            if (event.key === 'Enter' || event.key === ',' || event.key === 'Tab') {
+                event.preventDefault();
+                const picked = (suggest.items.length && event.key !== ',') ? suggest.items[suggest.index] : null;
+                const tag = (picked || input.value).trim().replace(/,$/, '');
+                if (tag) {
+                    await addTagToRow(row.anno_key, tag);
+                    input.value = '';
+                    hideSuggestions();
+                    // Stay in the cell so several tags can be typed in a row.
+                    beginEdit(activeCell.rowIdx, 'tags');
+                } else {
+                    endEdit();
+                }
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                endEdit();
+                return;
+            }
+
+            if (event.key === 'Backspace' && !input.value) {
+                const tags = row.tags || [];
+                if (tags.length) {
+                    event.preventDefault();
+                    await removeTagFromRow(row.anno_key, tags[tags.length - 1]);
+                    beginEdit(activeCell.rowIdx, 'tags');
+                }
+            }
+        }
+
+        function moveActive(rowDelta, fieldDelta) {
+            if (!activeCell) return;
+            const pageLen = currentPageData().length;
+            let { rowIdx, field } = activeCell;
+
+            if (fieldDelta) {
+                const i = EDITABLE_FIELDS.indexOf(field);
+                field = EDITABLE_FIELDS[Math.max(0, Math.min(EDITABLE_FIELDS.length - 1, i + fieldDelta))];
+            }
+            rowIdx = Math.max(0, Math.min(pageLen - 1, rowIdx + rowDelta));
+
+            activeCell = { rowIdx, field };
+            renderGridTable();
+            const el = cellEl(rowIdx, field);
+            if (el) el.scrollIntoView({ block: 'nearest' });
+        }
+
+        // Spreadsheet-style navigation over the editable cells.
+        document.addEventListener('keydown', (e) => {
+            if (viewMode !== 'grid' || editingCell || !activeCell) return;
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+
+            if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1, 0); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1, 0); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); moveActive(0, 1); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); moveActive(0, -1); }
+            else if (e.key === 'Enter') { e.preventDefault(); beginEdit(activeCell.rowIdx, activeCell.field); }
+            else if (e.key === 'Escape') { activeCell = null; renderGridTable(); }
+        });
+
+        // --- Autocomplete ------------------------------------------------
+
+        function showSuggestions(input, context) {
+            const query = input.value.trim().toLowerCase();
+            const row = context === 'cell' ? currentPageData()[activeCell?.rowIdx] : null;
+            const already = row ? (row.tags || []) : [];
+
+            let items = tagAutocomplete.filter(t => !already.includes(t));
+            if (query) items = items.filter(t => t.toLowerCase().includes(query));
+            // Prefix matches first -- they're what the user is most likely typing.
+            items.sort((a, b) => {
+                const ap = a.toLowerCase().startsWith(query) ? 0 : 1;
+                const bp = b.toLowerCase().startsWith(query) ? 0 : 1;
+                return ap - bp || a.localeCompare(b);
+            });
+
+            suggest.items = items.slice(0, 8);
+            suggest.index = 0;
+            suggest.input = input;
+            suggest.onPick = context === 'cell'
+                ? async (tag) => {
+                    await addTagToRow(row.anno_key, tag);
+                    beginEdit(activeCell.rowIdx, 'tags');
+                }
+                : (tag) => { input.value = tag; hideSuggestions(); };
+
+            paintSuggestions();
+        }
+
+        function paintSuggestions() {
+            const box = document.getElementById('gridSuggest');
+            if (!suggest.items.length || !suggest.input) return hideSuggestions();
+
+            const rect = suggest.input.getBoundingClientRect();
+            box.style.left = `${rect.left}px`;
+            box.style.top = `${rect.bottom + 4}px`;
+            box.innerHTML = suggest.items.map((tag, i) => `
+                <div class="grid-suggest-item ${i === suggest.index ? 'active' : ''}"
+                     onmousedown="event.preventDefault(); pickSuggestion(${i})">
+                    <span>${escapeHtml(tag)}</span>
+                    <span class="hint">${i === suggest.index ? '↵' : ''}</span>
+                </div>
+            `).join('');
+            box.classList.add('show');
+        }
+
+        function pickSuggestion(index) {
+            const tag = suggest.items[index];
+            const handler = suggest.onPick;
+            hideSuggestions();
+            if (handler && tag) handler(tag);
+        }
+
+        function hideSuggestions() {
+            suggest.items = [];
+            const box = document.getElementById('gridSuggest');
+            if (box) box.classList.remove('show');
+        }
+
+        // --- Persistence -------------------------------------------------
+
+        function localRow(key) {
+            return allData.find(r => r.anno_key === key);
+        }
+
+        async function addTagToRow(key, tag) {
+            const row = localRow(key);
+            if (row) {
+                row.tags = Array.from(new Set([...(row.tags || []), tag])).sort();
+                row.tag_sources = { ...(row.tag_sources || {}), [tag]: 'manual' };
+            }
+            if (!tagAutocomplete.includes(tag)) tagAutocomplete.push(tag);
+
+            await App.postJson('/api/tags/transaction', { txn_id: key, tags: [tag], mode: 'add' });
+        }
+
+        async function removeTagFromRow(key, tag) {
+            const row = localRow(key);
+            if (row) {
+                row.tags = (row.tags || []).filter(t => t !== tag);
+                if (row.tag_sources) delete row.tag_sources[tag];
+            }
+            renderGridTable();
+
+            await App.postJson('/api/tags/transaction', { txn_id: key, tags: [tag], mode: 'remove' });
+        }
+
+        async function saveRemarkForKey(key, text) {
+            const row = localRow(key);
+            if (row) row.manual_remarks = text;
+
+            await App.postJson('/api/transactions/remarks', { txn_id: key, remarks: text });
+        }
+
+        // --- Bulk actions -------------------------------------------------
+
+        function handleBulkTagKey(event) {
+            if (suggest.items.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+                event.preventDefault();
+                suggest.index += event.key === 'ArrowDown' ? 1 : -1;
+                if (suggest.index < 0) suggest.index = suggest.items.length - 1;
+                if (suggest.index >= suggest.items.length) suggest.index = 0;
+                paintSuggestions();
+                return;
+            }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (suggest.items.length) event.target.value = suggest.items[suggest.index];
+                hideSuggestions();
+                applyBulkTag();
+            } else if (event.key === 'Escape') {
+                hideSuggestions();
+            }
+        }
+
+        async function applyBulkTag() {
+            const input = document.getElementById('bulkTagInput');
+            const tag = input.value.trim();
+            if (!tag || selectedKeys.size === 0) return;
+
+            const keys = Array.from(selectedKeys);
+            keys.forEach(key => {
+                const row = localRow(key);
+                if (row) {
+                    row.tags = Array.from(new Set([...(row.tags || []), tag])).sort();
+                    row.tag_sources = { ...(row.tag_sources || {}), [tag]: 'manual' };
+                }
+            });
+            if (!tagAutocomplete.includes(tag)) tagAutocomplete.push(tag);
+
+            input.value = '';
+            renderGridTable();
+
+            await App.postJson('/api/tags/bulk', { anno_keys: keys, add_tags: [tag] });
+        }
+
+        /* Review state is per transaction (anno_key). Updated locally first so
+           the grid responds instantly, then persisted. */
+        async function setReviewed(keys, reviewed) {
+            if (!keys.length) return;
+            keys.forEach(key => {
+                const row = localRow(key);
+                if (row) row.is_reviewed = reviewed;
+            });
+            if (viewMode === 'grid') renderGridTable(); else renderTable();
+            try {
+                await App.postJson('/api/audit/review', { anno_keys: keys, reviewed });
+            } catch (err) {
+                alert('Could not save review state: ' + err.message);
+            }
+        }
+
+        async function applyBulkRemark() {
+            const input = document.getElementById('bulkRemarkInput');
+            const text = input.value;
+            if (selectedKeys.size === 0) return;
+
+            const keys = Array.from(selectedKeys);
+            keys.forEach(key => {
+                const row = localRow(key);
+                if (row) row.manual_remarks = text;
+            });
+
+            input.value = '';
+            renderGridTable();
+
+            await App.postJson('/api/tags/bulk', { anno_keys: keys, remarks: text });
+        }
+
+        /* --- Orphaned annotation recovery -------------------------------
+           The counterpart to stable annotation keys: when a key does move,
+           the tags/remarks are parked rather than deleted, and get re-attached
+           here instead of quietly disappearing. */
+
+        let orphanCache = [];
+
+        async function checkOrphans() {
+            try {
+                const res = await fetch('/api/annotations/orphans');
+                orphanCache = await res.json();
+            } catch (err) {
+                console.error('Failed to check orphaned annotations:', err);
+                return;
+            }
+            document.getElementById('orphanCount').textContent = orphanCache.length;
+            document.getElementById('orphanNotice').classList.toggle('hidden', orphanCache.length === 0);
+        }
+
+        function openOrphanModal() {
+            const modal = document.getElementById('orphanModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            renderOrphanList();
+        }
+
+        function closeOrphanModal() {
+            const modal = document.getElementById('orphanModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function renderOrphanList() {
+            const list = document.getElementById('orphanList');
+            if (!orphanCache.length) {
+                list.innerHTML = `<p class="text-center text-emerald-400 text-sm py-8">Nothing left to re-link.</p>`;
+                return;
+            }
+
+            list.innerHTML = orphanCache.map(o => {
+                const ctx = o.context || {};
+                const amount = (ctx.credit || 0) - (ctx.debit || 0);
+                const chips = (o.tags || []).map(t => `<span class="grid-tag">${escapeHtml(t)}</span>`).join('');
+
+                const candidates = (o.candidates || []).length
+                    ? o.candidates.map(c => `
+                        <button onclick="relinkOrphan('${o.orphan_key}', '${c.anno_key}')"
+                                class="w-full text-left px-3 py-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 border border-slate-800 transition-colors">
+                            <div class="flex justify-between gap-3 text-xs">
+                                <span class="font-mono text-slate-400">${c.date}</span>
+                                <span class="font-semibold ${c.same_bank ? 'text-emerald-400' : 'text-slate-400'}">${escapeHtml(c.bank)}</span>
+                                <span class="tabular-nums ${c.amount < 0 ? 'text-rose-400' : 'text-emerald-400'}">${currencyFormatter.format(Math.abs(c.amount))}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 truncate mt-0.5">${escapeHtml(c.description)}</div>
+                        </button>
+                    `).join('')
+                    : `<p class="text-xs text-slate-500 italic">No similar transaction found in the current ledger.</p>`;
+
+                return `
+                    <div class="border border-slate-800 rounded-xl p-4 bg-slate-950/40">
+                        <div class="flex justify-between items-start gap-4 mb-3">
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold truncate">${escapeHtml(ctx.description || '(no description recorded)')}</div>
+                                <div class="text-[11px] text-slate-500 mt-0.5">
+                                    ${escapeHtml(ctx.bank || '—')} · ${ctx.date || '—'} ·
+                                    <span class="tabular-nums">${currencyFormatter.format(Math.abs(amount))}</span>
+                                </div>
+                                <div class="flex flex-wrap gap-1 mt-2">${chips}</div>
+                                ${o.remarks ? `<p class="text-xs text-slate-400 italic mt-2">“${escapeHtml(o.remarks)}”</p>` : ''}
+                            </div>
+                            <button onclick="discardOrphan('${o.orphan_key}')"
+                                    class="text-[11px] text-slate-500 hover:text-rose-400 shrink-0">Discard</button>
+                        </div>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Attach to</p>
+                        <div class="space-y-1.5">${candidates}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function relinkOrphan(orphanKey, targetKey) {
+            await App.postJson('/api/annotations/relink', { orphan_key: orphanKey, target_key: targetKey });
+            await refreshAfterOrphanChange();
+        }
+
+        async function discardOrphan(orphanKey) {
+            await App.postJson('/api/annotations/discard-orphan', { orphan_key: orphanKey, target_key: '' });
+            await refreshAfterOrphanChange();
+        }
+
+        async function refreshAfterOrphanChange() {
+            await loadData();
+            await checkOrphans();
+            applyFilters();
+            renderOrphanList();
+            if (!orphanCache.length) closeOrphanModal();
         }
 
         function downloadCSV() {

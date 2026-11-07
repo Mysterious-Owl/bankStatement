@@ -1,79 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transaction Tags</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/common.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link href="/static/common.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #e2e8f0;
-            min-height: 100vh;
-        }
-
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(148, 163, 184, 0.1);
-            border-radius: 16px;
-        }
-
-        .tag-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
-            background: rgba(59, 130, 246, 0.2);
-            border: 1px solid rgba(59, 130, 246, 0.4);
-            border-radius: 12px;
-            font-size: 11px;
-            color: #60a5fa;
-            margin-right: 4px;
-            margin-bottom: 4px;
-        }
-
-        .tag-chip .remove {
-            cursor: pointer;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-        }
-
-        .tag-chip .remove:hover {
-            opacity: 1;
-        }
-
-        .autocomplete-dropdown {
-            position: absolute;
-            z-index: 50;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-            display: none;
-            top: 100%;
-            left: 0;
-            right: 0;
-        }
 
         .autocomplete-dropdown.show {
             display: block;
         }
 
-        .autocomplete-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            font-size: 12px;
-        }
 
-        .autocomplete-item:hover {
-            background: #334155;
-        }
 
         table {
             width: 100%;
@@ -85,15 +29,15 @@
         td {
             padding: 10px 12px;
             text-align: left;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            border-bottom: 1px solid rgba(142, 142, 147, 0.1);
         }
 
         th {
-            background: rgba(15, 23, 42, 0.9);
+            background: rgba(28, 28, 30, 0.9);
             font-weight: 600;
             font-size: 10px;
             text-transform: uppercase;
-            color: #94a3b8;
+            color: #8e8e93;
             position: sticky;
             top: 0;
             z-index: 10;
@@ -102,71 +46,49 @@
         }
 
         th:hover {
-            background: rgba(15, 23, 42, 1);
+            background: rgba(28, 28, 30, 1);
         }
 
         tr:hover td {
-            background: rgba(51, 65, 85, 0.3);
+            background: rgba(58, 58, 60, 0.3);
         }
 
         .search-input {
             font-size: 10px;
             padding: 4px 6px;
-            background: #0f172a;
-            border: 1px solid #334155;
+            background: #1c1c1e;
+            border: 1px solid #3a3a3c;
             border-radius: 4px;
-            color: #e2e8f0;
+            color: #d1d1d6;
             width: 100%;
         }
 
         .search-input:focus {
             outline: none;
-            border-color: #3b82f6;
+            border-color: var(--accent-primary);
         }
 
-        .modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 100;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
 
-        .modal.show {
-            display: flex;
-        }
 
-        .modal-content {
-            background: #1e293b;
-            border-radius: 16px;
-            max-width: 95vw;
-            max-height: 90vh;
-            width: 95%;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
 
         .filter-control-btn {
             padding: 2px 4px;
             border-radius: 4px;
-            background: #334155;
-            border: 1px solid #475569;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color-strong);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background-color 0.2s var(--ease-apple);
         }
 
         .filter-control-btn:hover {
-            background: #475569;
+            background: rgba(255, 255, 255, 0.12);
         }
 
         .sticky-header {
             position: sticky;
             top: 0;
             z-index: 20;
-            background: rgba(15, 23, 42, 0.95);
+            background: rgba(28, 28, 30, 0.95);
         }
 
         th.group:hover .group-hover\:opacity-100 {
@@ -174,29 +96,127 @@
         }
 
         tr.selected {
-            background-color: rgba(37, 99, 235, 0.1) !important;
-            border-left: 2px solid #2563eb;
+            background-color: rgba(10, 132, 255, 0.1) !important;
+            border-left: 2px solid var(--accent-primary);
+        }
+
+        /* Tags applied by a saved group rule, as opposed to hand-tagged rows */
+        .tag-chip.is-rule {
+            background: rgba(191, 90, 242, 0.16);
+            border-color: rgba(191, 90, 242, 0.4);
+            color: #d9a2f7;
+        }
+
+        /* --- Tag library ------------------------------------------------ */
+        .vocab-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem 0.75rem;
+            padding: 0.5rem 0.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .vocab-row:last-child {
+            border-bottom: none;
+        }
+
+        .vocab-name {
+            flex: 0 1 auto;
+            min-width: 7rem;
+        }
+
+        .vocab-usage {
+            flex: 1 1 auto;
+            font-size: 0.75rem;
+            color: var(--text-muted, #8e8e93);
+        }
+
+        /* A tag nothing currently carries -- usually a stale rule, and the
+           main thing this panel exists to let the user clean up. */
+        .vocab-usage.is-unused {
+            color: #ff9f0a;
+        }
+
+        .vocab-actions {
+            display: flex;
+            gap: 0.375rem;
+            margin-left: auto;
+        }
+
+        /* Narrow screens: keep the tag and its two buttons on one line and
+           drop the usage summary below, rather than clipping Delete. */
+        @media (max-width: 640px) {
+            .vocab-usage {
+                order: 3;
+                flex-basis: 100%;
+            }
+
+            .vocab-actions {
+                order: 2;
+            }
+        }
+
+        .vocab-rename-input {
+            width: 11rem;
+            padding: 0.25rem 0.5rem !important;
+            font-size: 0.8125rem;
+        }
+
+        .vocab-btn {
+            padding: 0.25rem 0.625rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-secondary, #aeaeb2);
+            cursor: pointer;
+            transition: background-color 0.15s var(--ease-apple);
+        }
+
+        .vocab-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .vocab-btn.is-danger:hover {
+            background: rgba(255, 69, 58, 0.18);
+            border-color: rgba(255, 69, 58, 0.45);
+            color: #ff6961;
+        }
+        /* Tall, full-width transaction list with its own scrolling body. */
+        .modal-content {
+            width: 95%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
     </style>
 </head>
 
-<body class="p-8">
-    <header class="mb-6">
-        <nav class="flex justify-between items-center">
-            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                Transaction Tags
-            </h1>
-            <div class="flex gap-4">
-                <a href="/" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Dashboard</a>
-                <a href="/data" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Data
-                    Grid</a>
-                <a href="/rules"
-                    class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Rules</a>
-                <a href="/category-tags"
-                    class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">Category Tags</a>
-            </div>
-        </nav>
+<body class="min-h-screen">
+
+
+    <div class="page-content p-4 md:p-8">
+    <header class="page-hero mb-8">
+        <h1>Transaction Tags</h1>
+        <p>Group transactions and manage tag assignments</p>
     </header>
+
+    <!-- Tag library: vocabulary-level operations, as opposed to the
+         per-group assignment the table below handles. -->
+    <div class="glass-panel p-5 mb-6">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <h2 class="text-base font-semibold text-slate-100">Tag Library</h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    Rename or delete a tag everywhere it is used &mdash; manual, rule, and category
+                </p>
+            </div>
+            <button class="filter-control-btn" id="vocabToggle" onclick="toggleVocabulary()">Show</button>
+        </div>
+        <div id="vocabBody" class="hidden mt-4"></div>
+    </div>
 
     <!-- Data Table -->
     <div class="glass-panel overflow-hidden">
@@ -219,6 +239,8 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
     </div>
 
     <!-- Column Selector Modal -->
@@ -466,7 +488,7 @@
                 const hideNull = hideNullFilters[col] || false;
                 return `<th>
                     <div class="flex gap-1 items-center">
-                        <input type="text" class="search-input flex-1" placeholder="Search..." value="${currentValue}" oninput="filterBy('${col}', this.value)">
+                        <input type="text" class="search-input flex-1" placeholder="Search..." value="${App.escapeHtml(currentValue)}" oninput="filterBy('${col}', this.value)">
                         <button class="filter-control-btn" onclick="clearFilter('${col}')" title="Clear filter">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -608,7 +630,7 @@
                 // Row checkbox
                 let cells = `<td class="text-center">
                     <input type="checkbox" ${selectedRows.has(group.group_key) ? 'checked' : ''} 
-                           onchange="toggleRowSelection('${escapeHtml(group.group_key)}')"
+                           onchange="toggleRowSelection(${App.jsArg(group.group_key)})"
                            class="w-4 h-4 rounded">
                 </td>`;
 
@@ -621,9 +643,9 @@
                     }
 
                     if (col === 'category' && group.category_color) {
-                        return `<td><span class="px-2 py-1 rounded text-xs" style="background: ${group.category_color}20; color: ${group.category_color}; border: 1px solid ${group.category_color}40">${value}</span></td>`;
+                        return `<td><span class="px-2 py-1 rounded text-xs" style="background: ${group.category_color}20; color: ${group.category_color}; border: 1px solid ${group.category_color}40">${App.escapeHtml(value)}</span></td>`;
                     }
-                    return `<td class="text-xs">${value}</td>`;
+                    return `<td class="text-xs">${App.escapeHtml(value)}</td>`;
                 }).join('');
 
                 // Plus column placeholder
@@ -632,7 +654,7 @@
                 cells += `<td class="text-xs font-semibold">${group.count}</td>`;
                 cells += `<td>${renderTagInput(group)}</td>`;
                 cells += `<td class="text-center">
-                    <button onclick='viewGroup("${escapeHtml(group.group_key)}")' class="p-1 hover:bg-slate-700 rounded">
+                    <button onclick="viewGroup(${App.jsArg(group.group_key)})" class="p-1 hover:bg-slate-700 rounded">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -643,28 +665,31 @@
             }).join('');
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        const escapeHtml = App.escapeHtml;
 
         function renderTagInput(group) {
-            // Show aggregated tags with counts
+            // Tags shown with how many transactions in the group carry them,
+            // and marked when they come from a saved rule rather than from
+            // individual manual tagging -- removing those two is different.
+            const ruleTags = new Set(group.rule_tags || []);
             let tagChips = '';
             if (group.tag_counts) {
-                tagChips = Object.entries(group.tag_counts).map(([tag, count]) => `
-                    <div class="tag-chip">
-                        <span>${escapeHtml(tag)}|${count}</span>
-                        <span class="remove" onclick='removeTag("${escapeHtml(group.group_key)}", "${escapeHtml(tag)}")'>×</span>
+                tagChips = Object.entries(group.tag_counts).map(([tag, count]) => {
+                    const isRule = ruleTags.has(tag);
+                    const coversAll = count === group.count;
+                    return `
+                    <div class="tag-chip ${isRule ? 'is-rule' : ''}"
+                         title="${isRule ? 'Applied by a group rule to all matching transactions' : 'Tagged manually'} — on ${count} of ${group.count}">
+                        <span>${escapeHtml(tag)}${coversAll ? '' : ` · ${count}/${group.count}`}</span>
+                        <span class="remove" onclick="removeTag(${App.jsArg(group.group_key)}, ${App.jsArg(tag)})">×</span>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             } else if (group.tags) {
-                // Fallback to old format
                 tagChips = group.tags.map(tag => `
                     <div class="tag-chip">
                         <span>${escapeHtml(tag)}</span>
-                        <span class="remove" onclick='removeTag("${escapeHtml(group.group_key)}", "${escapeHtml(tag)}")'>×</span>
+                        <span class="remove" onclick="removeTag(${App.jsArg(group.group_key)}, ${App.jsArg(tag)})">×</span>
                     </div>
                 `).join('');
             }
@@ -679,8 +704,8 @@
                             type="text" 
                             class="w-full px-2 py-1 text-xs bg-slate-900 border border-slate-700 rounded focus:border-blue-500 focus:outline-none"
                             placeholder="Add tag..."
-                            onkeydown="handleTagInput(event, '${escapeHtml(group.group_key)}')"
-                            oninput="showAutocomplete(event, '${escapeHtml(group.group_key)}')"
+                            onkeydown="handleTagInput(event, ${App.jsArg(group.group_key)})"
+                            oninput="showAutocomplete(event, ${App.jsArg(group.group_key)})"
                             id="tag-input-${safeGroupKey}"
                         >
                         <div class="autocomplete-dropdown" id="autocomplete-${safeGroupKey}"></div>
@@ -724,7 +749,7 @@
             }
 
             dropdown.innerHTML = matches.map(tag => `
-                <div class="autocomplete-item" onclick='selectAutocomplete("${escapeHtml(groupKey)}", "${escapeHtml(tag)}")'>
+                <div class="autocomplete-item" onclick="selectAutocomplete(${App.jsArg(groupKey)}, ${App.jsArg(tag)})">
                     ${escapeHtml(tag)}
                 </div>
             `).join('');
@@ -749,32 +774,42 @@
             }
         }
 
+        /**
+         * Adding a tag here creates/extends the group's *rule*, so it applies
+         * to every transaction matching the criteria (now and in future).
+         *
+         * Only rule tags are sent -- previously the whole aggregated tag list
+         * went back, which quietly promoted tags someone had applied to a
+         * single transaction into a rule covering the entire group.
+         */
+        /* Persist a group's rule tags as a criteria rule. `criteria` is the
+           structured form of the group key -- the delimited string can't
+           round-trip values containing a pipe. */
+        function saveGroupRule(group) {
+            return App.postJson('/api/tags/apply', {
+                group_key: group.group_key,
+                criteria: group.criteria,
+                tags: group.rule_tags,
+                create_rule: true,
+                grouping_columns: selectedColumns
+            });
+        }
+
         async function addTag(groupKey, tag, shouldRender = true) {
             const group = allGroups.find(g => g.group_key === groupKey);
             if (!group) return;
 
-            // Normalize tags
             if (!group.tags) group.tags = [];
             if (!group.tag_counts) group.tag_counts = {};
+            if (!group.rule_tags) group.rule_tags = [];
 
-            if (!group.tags.includes(tag)) {
-                group.tags.push(tag);
-                // Update local counts for immediate feedback
-                group.tag_counts[tag] = (group.tag_counts[tag] || 0) + group.count;
+            if (!group.rule_tags.includes(tag)) {
+                group.rule_tags.push(tag);
+                if (!group.tags.includes(tag)) group.tags.push(tag);
+                group.tag_counts[tag] = group.count;
 
-                // Save to backend
-                fetch('/api/tags/apply', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        group_key: groupKey,
-                        tags: group.tags,
-                        create_rule: true,
-                        grouping_columns: selectedColumns
-                    })
-                });
+                saveGroupRule(group);
 
-                // Update autocomplete
                 if (!tagAutocomplete.includes(tag)) {
                     tagAutocomplete.push(tag);
                 }
@@ -783,28 +818,170 @@
             }
         }
 
+        /**
+         * Removing a rule tag rewrites the rule; removing a tag that was only
+         * ever applied by hand strips it from that group's transactions
+         * instead. Treating both the same way meant manual tags could not be
+         * removed from this page at all.
+         */
         async function removeTag(groupKey, tag) {
             const group = allGroups.find(g => g.group_key === groupKey);
             if (!group) return;
 
+            const isRuleTag = (group.rule_tags || []).includes(tag);
+
             group.tags = (group.tags || []).filter(t => t !== tag);
+            group.rule_tags = (group.rule_tags || []).filter(t => t !== tag);
             if (group.tag_counts && group.tag_counts[tag]) {
                 delete group.tag_counts[tag];
             }
 
-            // Save to backend
-            fetch('/api/tags/apply', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    group_key: groupKey,
-                    tags: group.tags,
-                    create_rule: true,
-                    grouping_columns: selectedColumns
-                })
-            });
+            if (isRuleTag) {
+                saveGroupRule(group);
+            } else {
+                App.postJson('/api/tags/bulk', { anno_keys: group.anno_keys || [], remove_tags: [tag] });
+            }
 
             renderTable();
+        }
+
+        /* --- Tag library -------------------------------------------------
+         *
+         * Renaming and deleting are vocabulary-level operations: they reach
+         * every place a tag appears, which is why they live here rather than
+         * on an individual group row. Anything mutated here invalidates the
+         * grouped view, so the table is reloaded afterwards.
+         */
+        let vocabulary = [];
+        let renamingTag = null;
+
+        function toggleVocabulary() {
+            const body = document.getElementById('vocabBody');
+            const toggle = document.getElementById('vocabToggle');
+            const showing = body.classList.toggle('hidden');
+            toggle.textContent = showing ? 'Show' : 'Hide';
+            if (!showing) loadVocabulary();
+        }
+
+        async function loadVocabulary() {
+            const body = document.getElementById('vocabBody');
+            try {
+                vocabulary = await App.api('/api/tags/vocabulary');
+            } catch (err) {
+                body.innerHTML = `<p class="text-sm text-red-400">Failed to load tags: ${escapeHtml(err.message)}</p>`;
+                return;
+            }
+            renderVocabulary();
+        }
+
+        function usageSummary(tag) {
+            const parts = [];
+            if (tag.transactions) parts.push(`${tag.transactions} transaction${tag.transactions === 1 ? '' : 's'}`);
+            if (tag.rules) parts.push(`${tag.rules} rule${tag.rules === 1 ? '' : 's'}`);
+            if (tag.categories) parts.push(`${tag.categories} categor${tag.categories === 1 ? 'y' : 'ies'}`);
+            if (tag.orphans) parts.push(`${tag.orphans} orphaned`);
+            return parts.length ? parts.join(' · ') : 'not used by anything';
+        }
+
+        function renderVocabulary() {
+            const body = document.getElementById('vocabBody');
+
+            if (!vocabulary.length) {
+                body.innerHTML = '<p class="text-sm text-slate-500">No tags yet. Add one from the table below.</p>';
+                return;
+            }
+
+            // Handlers address rows by index rather than by name: a tag
+            // containing a quote would otherwise break out of the inline
+            // attribute, and tags are free text.
+            body.innerHTML = vocabulary.map((tag, i) => {
+                const name = escapeHtml(tag.name);
+                const nameCell = renamingTag === tag.name
+                    ? `<input type="text" class="vocab-rename-input" value="${name}"
+                              id="vocab-rename-input"
+                              onkeydown="handleRenameKey(event, ${i})"
+                              onblur="commitRename(${i})">`
+                    : `<span class="tag-chip">${name}</span>`;
+
+                return `
+                    <div class="vocab-row">
+                        <div class="vocab-name">${nameCell}</div>
+                        <div class="vocab-usage${tag.transactions ? '' : ' is-unused'}">${usageSummary(tag)}</div>
+                        <div class="vocab-actions">
+                            <button class="vocab-btn" onclick="startRename(${i})">Rename</button>
+                            <button class="vocab-btn is-danger" onclick="deleteTag(${i})">Delete</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const input = document.getElementById('vocab-rename-input');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+
+        function startRename(index) {
+            renamingTag = vocabulary[index].name;
+            renderVocabulary();
+        }
+
+        function handleRenameKey(event, index) {
+            if (event.key === 'Enter') {
+                event.target.blur();  // blur commits
+            } else if (event.key === 'Escape') {
+                renamingTag = null;
+                // Reset the value first: blur fires next and would otherwise
+                // read the abandoned edit as a commit.
+                event.target.value = vocabulary[index].name;
+                renderVocabulary();
+            }
+        }
+
+        async function commitRename(index) {
+            const oldName = vocabulary[index].name;
+            if (renamingTag !== oldName) return;  // already cancelled
+            const input = document.getElementById('vocab-rename-input');
+            const newName = input ? input.value.trim() : '';
+            renamingTag = null;
+
+            if (!newName || newName === oldName) {
+                renderVocabulary();
+                return;
+            }
+
+            const existing = vocabulary.some(t => t.name === newName);
+            if (existing && !confirm(`"${newName}" already exists. Rename will merge "${oldName}" into it. Continue?`)) {
+                renderVocabulary();
+                return;
+            }
+
+            try {
+                await App.postJson('/api/tags/rename', { old_name: oldName, new_name: newName });
+            } catch (err) {
+                alert('Rename failed: ' + err.message);
+            }
+            await refreshAfterVocabChange();
+        }
+
+        async function deleteTag(index) {
+            const tag = vocabulary[index];
+            const name = tag.name;
+            if (!confirm(`Delete "${name}" everywhere?\n\nCurrently used by: ${usageSummary(tag)}.\nThis cannot be undone.`)) return;
+
+            try {
+                await App.postJson('/api/tags/delete', { name });
+            } catch (err) {
+                alert('Delete failed: ' + err.message);
+            }
+            await refreshAfterVocabChange();
+        }
+
+        /* The grouped table and the autocomplete list both embed tag names, so
+           neither survives a rename or delete untouched. */
+        async function refreshAfterVocabChange() {
+            await Promise.all([loadVocabulary(), loadAutocomplete()]);
+            await loadGroups();
         }
 
         function sortBy(column) {
@@ -947,7 +1124,7 @@
                                             <td class="text-xs py-2 text-red-400">${txn.Debit || '-'}</td>
                                             <td class="text-xs py-2 text-green-400">${txn.Credit || '-'}</td>
                                             <td class="text-xs py-2">${txn.Balance || '-'}</td>
-                                            <td class="text-xs py-2">${txn.Bank || '-'}</td>
+                                            <td class="text-xs py-2">${App.escapeHtml(txn.Bank || '-')}</td>
                                             <td class="text-xs py-2">
                                                 <div class="flex flex-wrap gap-1 items-center">
                                                     ${currentTags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}
