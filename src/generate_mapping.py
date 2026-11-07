@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from api import ingest_mapping
 from lib.parser import get_passwords, try_open_workbook, find_table_start
 import config
 
@@ -8,27 +9,17 @@ def generate_column_mapping(raw_headers, banks, output_csv):
     
     for file_name, headers in raw_headers.items():
         bank = banks.get(file_name, "Other")
+        suggested = ingest_mapping.suggest_mapping(headers)
+
         for col in headers:
-            best_match = ""
             col_str = str(col).lower()
-            
-            # Heuristics
-            if "date" in col_str: best_match = "Date"
-            elif any(x in col_str for x in ["value dt"]): best_match = "Date"
-            elif any(x in col_str for x in ["description"]): best_match = "Description"
-            elif any(x in col_str for x in ["debit", "dr", "withdrawal"]) and not any(x in col_str for x in ["dr / cr"]) : best_match = "Debit"
-            elif any(x in col_str for x in ["credit", "cr", "deposit"]) and not any(x in col_str for x in ["dr / cr"]) : best_match = "Credit"
-            elif "bal" in col_str: best_match = "Balance"
-            elif any(x in col_str for x in ["ref", "chq", "txn", "cheque", "reference"]): best_match = "RefNumber"
-            elif "type" in col_str: best_match = "TxnType"
-            elif "amount" in col_str: best_match = "Amount"
-            
-            # Catch-all
-            if best_match == "" and not any(x in col_str for x in ["dr / cr", "sl. no."]):
-                 if any(x in col_str for x in ["desc", "particular", "narration", "details", "remarks", "beneficiary", "remitter"]): 
-                     best_match = "Description"
-                 else:
-                     best_match = "Description"
+            best_match = suggested.get(col, "")
+
+            # Catch-all: this script maps every remaining column to Description
+            # rather than leaving it blank, on the assumption that anything a
+            # statement carries alongside the amounts is narrative text.
+            if not best_match and not any(x in col_str for x in ["dr / cr", "sl. no."]):
+                best_match = "Description"
 
             mapping_data.append({
                 "FileName": file_name,
