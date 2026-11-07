@@ -9,3 +9,6 @@ raw_extracted_tables
 .kanu
 uploads
 data
+# Local tooling
+.claude/
+.pytest_cache/
